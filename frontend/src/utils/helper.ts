@@ -327,7 +327,11 @@ async function setLinuxSystemProxy(
         .join(','),
     ])
     await Promise.all([p1, p2, p3, p4, p5])
-  } else if (['GNOME', 'XFCE', 'DDE', 'Deepin', 'X-Cinnamon'].includes(desktop)) {
+  }
+  if (
+    ['GNOME', 'XFCE', 'DDE', 'Deepin', 'X-Cinnamon'].includes(desktop) ||
+    desktop.includes('KDE')
+  ) {
     const p1 = ignoredError(Exec, 'gsettings', [
       'set',
       'org.gnome.system.proxy',
