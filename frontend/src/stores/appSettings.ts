@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { parse, stringify } from 'yaml'
 
 import {
+  GetSystemProxyBypass,
   ReadFile,
   WriteFile,
   WindowSetSystemDefaultTheme,
@@ -34,15 +35,7 @@ import {
 } from '@/enums/app'
 import i18n, { loadLocale } from '@/lang'
 import { useAppStore, useEnvStore } from '@/stores'
-import {
-  debounce,
-  updateTrayAndMenus,
-  ignoredError,
-  GetSystemProxyBypass,
-  deepClone,
-} from '@/utils'
-
-import type { AppSettings } from '@/types/app'
+import { debounce, updateTrayAndMenus, ignoredError, deepClone, message } from '@/utils'
 
 export const useAppSettingsStore = defineStore('app-settings', () => {
   const appStore = useAppStore()
@@ -50,7 +43,7 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
 
   let latestUserSettings: string
 
-  const app = ref<AppSettings>({
+  const app = ref<App.AppSettings>({
     lang: Lang.EN,
     theme: Theme.Auto,
     color: Color.Default,
@@ -70,9 +63,13 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
     exitOnClose: true,
     closeKernelOnExit: true,
     autoSetSystemProxy: true,
+    autoSetSystemDNS: false,
     requestProxyMode: RequestProxyMode.System,
     customProxy: '',
     proxyBypassList: '',
+    systemProxyServices: [],
+    systemProxyDNS: '',
+    systemDefaultDNS: '',
     autoStartKernel: false,
     autoRestartKernel: false,
     userAgent: '',
@@ -120,7 +117,7 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
 
   const setupAppSettings = async () => {
     const data = await ignoredError(ReadFile, UserFilePath)
-    let settings: AppSettings
+    let settings: App.AppSettings
     if (data) {
       settings = parse(data)
     } else {
@@ -134,7 +131,31 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
       settings.kernel.alpha = DefaultCoreConfig()
     }
     if (!settings.proxyBypassList) {
-      settings.proxyBypassList = await GetSystemProxyBypass()
+      settings.proxyBypassList = (await ignoredError(GetSystemProxyBypass)) || ''
+    }
+    if ('darwinSystemProxyServices' in settings) {
+      settings.systemProxyServices = settings.darwinSystemProxyServices as string[]
+      delete settings.darwinSystemProxyServices
+    }
+    const defaultSystemProxyServices = envStore.env.os === 'darwin' ? ['Ethernet', 'Wi-Fi'] : []
+    if (!data) {
+      settings.systemProxyServices = defaultSystemProxyServices
+    } else if (!settings.systemProxyServices) {
+      settings.systemProxyServices = defaultSystemProxyServices
+    } else if (
+      envStore.env.os === 'linux' &&
+      settings.systemProxyServices.join(',') === 'Ethernet,Wi-Fi'
+    ) {
+      settings.systemProxyServices = defaultSystemProxyServices
+    }
+    if (settings.autoSetSystemDNS === undefined) {
+      settings.autoSetSystemDNS = false
+    }
+    if (settings.systemProxyDNS === undefined) {
+      settings.systemProxyDNS = ''
+    }
+    if (settings.systemDefaultDNS === undefined) {
+      settings.systemDefaultDNS = ''
     }
     if (!settings.requestProxyMode) {
       settings.requestProxyMode = RequestProxyMode.System
@@ -162,7 +183,7 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
   }
 
   const applyAppSettings = {
-    theme(theme: Theme) {
+    theme(theme: App.Theme) {
       const isAuto = theme === Theme.Auto
       if (isAuto) {
         themeMode.value = mediaQueryList.matches ? Theme.Dark : Theme.Light
@@ -176,7 +197,7 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
         loadLocale(lang)
       }
     },
-    color(color: Color, primary: string, secondary: string) {
+    color(color: App.Color, primary: string, secondary: string) {
       if (color !== Color.Custom) {
         ;({ primary, secondary } = Colors[color] ?? { primary, secondary })
       }
@@ -205,13 +226,18 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
     },
     systemProxyBypass() {
       if (envStore.systemProxy) {
-        envStore.setSystemProxy()
+        envStore.setSystemProxy().catch((err) => message.error(err))
+      }
+    },
+    systemDNS() {
+      if (app.value.autoSetSystemDNS) {
+        envStore.setSystemDNS(envStore.systemDNSSet).catch((err) => message.error(err))
       }
     },
   }
 
   /* Apply AppSettings */
-  const onAppSettingsChange = (settings: AppSettings) => {
+  const onAppSettingsChange = (settings: App.AppSettings) => {
     applyAppSettings.theme(settings.theme)
     applyAppSettings.color(settings.color, settings.primaryColor, settings.secondaryColor)
     applyAppSettings.lang(settings.lang)
@@ -235,14 +261,14 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
   watch(app, onAppSettingsChange, { deep: true })
 
   /* Apply AppTheme */
-  const themeMode = ref<Theme.Light | Theme.Dark>(Theme.Light)
+  const themeMode = ref<Extract<App.Theme, 'light' | 'dark'>>(Theme.Light)
   const mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)')
   mediaQueryList.addEventListener('change', ({ matches }) => {
     if (app.value.theme === Theme.Auto) {
       themeMode.value = matches ? Theme.Dark : Theme.Light
     }
   })
-  const setAppTheme = (theme: Theme.Dark | Theme.Light) => {
+  const setAppTheme = (theme: Extract<App.Theme, 'light' | 'dark'>) => {
     if (document.startViewTransition) {
       document.startViewTransition(() => {
         document.body.setAttribute('theme-mode', theme)
@@ -281,7 +307,16 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
   const setSystemProxyBypass = debounce(() => {
     applyAppSettings.systemProxyBypass()
   }, 3000)
-  watch(() => app.value.proxyBypassList, setSystemProxyBypass)
+  watch(() => [app.value.proxyBypassList, app.value.systemProxyServices], setSystemProxyBypass)
+
+  /* Apply SystemDNS */
+  const setSystemDNS = debounce(() => {
+    applyAppSettings.systemDNS()
+  }, 3000)
+  watch(
+    () => [app.value.systemProxyServices, app.value.systemProxyDNS, app.value.systemDefaultDNS],
+    setSystemDNS,
+  )
 
   return { setupAppSettings, app, themeMode }
 })

@@ -1,4 +1,4 @@
-import * as App from '@wails/go/bridge/App'
+import * as Bridge from '@wails/go/bridge/App'
 import {
   IsNotificationAvailable,
   RequestNotificationAuthorization,
@@ -7,30 +7,66 @@ import {
 
 import { sampleID } from '@/utils'
 
-import type { AppEnv } from '@/types/app'
+export const RestartApp = Bridge.RestartApp
 
-export const RestartApp = App.RestartApp
+export const ExitApp = Bridge.ExitApp
 
-export const ExitApp = App.ExitApp
+export const ShowMainWindow = Bridge.ShowMainWindow
 
-export const ShowMainWindow = App.ShowMainWindow
+export const UpdateTray = Bridge.UpdateTray
 
-export const UpdateTray = App.UpdateTray
+export const UpdateTrayMenus = Bridge.UpdateTrayMenus
 
-export const UpdateTrayMenus = App.UpdateTrayMenus
-
-export const UpdateTrayAndMenus = App.UpdateTrayAndMenus
+export const UpdateTrayAndMenus = Bridge.UpdateTrayAndMenus
 
 export const GetEnv = <T extends string | undefined = undefined>(
   key?: T,
-): Promise<T extends string ? string : AppEnv> => {
-  return App.GetEnv(key || '')
+): Promise<T extends string ? string : App.AppEnv> => {
+  return Bridge.GetEnv(key || '')
 }
 
-export const IsStartup = App.IsStartup
+export const IsStartup = Bridge.IsStartup
+
+export const GetSystemProxy = async () => {
+  const { flag, data } = await Bridge.GetSystemProxy()
+  if (!flag) {
+    throw data
+  }
+  return data
+}
+
+export const SetSystemProxy = async (
+  enable: boolean,
+  server: string,
+  proxyType: 'mixed' | 'http' | 'socks' = 'mixed',
+  bypass = '',
+  services: string[] = [],
+) => {
+  const { flag, data } = await Bridge.SetSystemProxy(enable, server, proxyType, bypass, services)
+  if (!flag) {
+    throw data
+  }
+  return data
+}
+
+export const SetSystemDNS = async (servers: string, services: string[] = []) => {
+  const { flag, data } = await Bridge.SetSystemDNS(servers, services)
+  if (!flag) {
+    throw data
+  }
+  return data
+}
+
+export const GetSystemProxyBypass = async () => {
+  const { flag, data } = await Bridge.GetSystemProxyBypass()
+  if (!flag) {
+    throw data
+  }
+  return data
+}
 
 export const GetInterfaces = async () => {
-  const { flag, data } = await App.GetInterfaces()
+  const { flag, data } = await Bridge.GetInterfaces()
   if (!flag) {
     throw data
   }

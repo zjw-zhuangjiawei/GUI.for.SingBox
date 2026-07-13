@@ -33,6 +33,8 @@ type RequestOptions struct {
 	Timeout   int
 	CancelId  string
 	FileField string
+	Sha256    string
+	Stream    string
 }
 
 type ExecOptions struct {

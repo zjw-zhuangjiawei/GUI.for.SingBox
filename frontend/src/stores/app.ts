@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -20,12 +20,14 @@ import {
   APP_VERSION,
   APP_VERSION_API,
   getGitHubApiAuthorization,
+  confirm,
   message,
   sampleID,
   sleep,
+  modal,
 } from '@/utils'
 
-import type { CustomAction, CustomActionFn, Menu } from '@/types/app'
+import { AboutView } from '@/components'
 
 import { useEnvStore } from './env'
 
@@ -35,7 +37,7 @@ export const useAppStore = defineStore('app', () => {
 
   /* Global Menu */
   const menuShow = ref(false)
-  const menuList = ref<Menu[]>([])
+  const menuList = ref<App.Menu[]>([])
   const menuPosition = ref({
     x: 0,
     y: 0,
@@ -52,6 +54,15 @@ export const useAppStore = defineStore('app', () => {
   /* Modal Stack */
   const modalStack: (() => void)[] = []
   const modalZIndexCounter = 999
+  const modalMinimized = ref<
+    {
+      id: string
+      title: () => string
+      openFn: () => void
+      closeFn: () => void
+      minimizeFn: () => void
+    }[]
+  >([])
 
   /* i18n */
   const localesLoading = ref(false)
@@ -72,14 +83,14 @@ export const useAppStore = defineStore('app', () => {
 
   /* Actions */
   const customActions = ref({
-    core_state: [] as (CustomAction | CustomActionFn)[],
-    title_bar: [] as (CustomAction | CustomActionFn)[],
-    profiles_header: [] as (CustomAction | CustomActionFn)[],
-    subscriptions_header: [] as (CustomAction | CustomActionFn)[],
+    core_state: [] as (App.CustomAction | App.CustomActionFn)[],
+    title_bar: [] as (App.CustomAction | App.CustomActionFn)[],
+    profiles_header: [] as (App.CustomAction | App.CustomActionFn)[],
+    subscriptions_header: [] as (App.CustomAction | App.CustomActionFn)[],
   })
   const addCustomActions = (
     target: keyof typeof customActions.value,
-    actions: CustomAction | CustomAction[] | CustomActionFn | CustomActionFn[],
+    actions: App.CustomAction | App.CustomAction[] | App.CustomActionFn | App.CustomActionFn[],
   ) => {
     if (!customActions.value[target]) throw new Error('Target does not exist: ' + target)
     const _actions = Array.isArray(actions) ? actions : [actions]
@@ -103,10 +114,12 @@ export const useAppStore = defineStore('app', () => {
 
   /* About Page */
   const showAbout = ref(false)
+  const lastCheckTime = ref(0)
   const checkForUpdatesLoading = ref(false)
   const restartable = ref(false)
   const downloading = ref(false)
   const downloadUrl = ref('')
+  const downloadDigest = ref('')
   const remoteVersion = ref(APP_VERSION)
   const updatable = computed(() => downloadUrl.value && APP_VERSION !== remoteVersion.value)
 
@@ -129,6 +142,7 @@ export const useAppStore = defineStore('app', () => {
         },
         {
           CancelId: downloadCacheFile,
+          Sha256: downloadDigest.value.slice(7),
         },
       ).finally(destroy)
 
@@ -164,6 +178,7 @@ export const useAppStore = defineStore('app', () => {
     if (checkForUpdatesLoading.value || downloading.value) return
     checkForUpdatesLoading.value = true
     remoteVersion.value = APP_VERSION
+    downloadDigest.value = ''
     try {
       const { body } = await HttpGet<Record<string, any>>(APP_VERSION_API, {
         Authorization: getGitHubApiAuthorization(),
@@ -177,9 +192,16 @@ export const useAppStore = defineStore('app', () => {
 
       const asset = assets.find((v: any) => v.name === assetName)
       if (!asset) throw 'Asset Not Found:' + assetName
+      if (asset.uploader.login !== 'github-actions[bot]') {
+        await confirm('common.warning', 'settings.kernel.risk', {
+          type: 'text',
+          okText: 'settings.kernel.stillDownload',
+        })
+      }
 
       remoteVersion.value = tag_name
       downloadUrl.value = asset.browser_download_url
+      downloadDigest.value = asset.digest
 
       if (showTips) {
         message.info(updatable.value ? 'about.newVersion' : 'about.latestVersion')
@@ -188,8 +210,24 @@ export const useAppStore = defineStore('app', () => {
       console.error(error)
       message.error(error.message || error)
     }
+    lastCheckTime.value = Date.now()
     checkForUpdatesLoading.value = false
   }
+
+  watch(showAbout, (v) => {
+    if (v) {
+      const m = modal({
+        cancel: false,
+        submit: false,
+        maskClosable: true,
+        minWidth: '50',
+        afterDestroy() {
+          showAbout.value = false
+        },
+      })
+      m.setContent(AboutView).open()
+    }
+  })
 
   return {
     isAppExiting,
@@ -201,8 +239,10 @@ export const useAppStore = defineStore('app', () => {
     tipsMessage,
     tipsPosition,
     modalStack,
+    modalMinimized,
     modalZIndexCounter,
     showAbout,
+    lastCheckTime,
     checkForUpdatesLoading,
     restartable,
     downloading,

@@ -1,28 +1,27 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
-import { GetEnv } from '@/bridge'
+import { GetEnv, GetSystemProxy, SetSystemDNS, SetSystemProxy } from '@/bridge'
 import { OS } from '@/enums/app'
 import { useAppSettingsStore, useKernelApiStore } from '@/stores'
-import { formatProxyHost, updateTrayAndMenus, SetSystemProxy, GetSystemProxy } from '@/utils'
-
-import type { AppEnv } from '@/types/app'
+import { formatProxyHost, ignoredError, updateTrayAndMenus } from '@/utils'
 
 export const useEnvStore = defineStore('env', () => {
   const appSettings = useAppSettingsStore()
   const kernelApiStore = useKernelApiStore()
 
-  const env = ref<AppEnv>({
+  const env = ref<App.AppEnv>({
     appName: '',
     appVersion: '',
     basePath: '',
     appPath: '',
-    os: '' as OS,
+    os: '' as App.OS,
     arch: '',
     isPrivileged: false,
   })
 
   const systemProxy = ref(false)
+  const systemDNSSet = ref(false)
 
   const setupEnv = async () => {
     const _env = await GetEnv()
@@ -37,7 +36,7 @@ export const useEnvStore = defineStore('env', () => {
 
   const updateSystemProxyStatus = async () => {
     const kernelApiStore = useKernelApiStore()
-    const proxyServer = await GetSystemProxy()
+    const proxyServer = (await ignoredError(GetSystemProxy)) || ''
 
     if (!proxyServer) {
       systemProxy.value = false
@@ -50,10 +49,16 @@ export const useEnvStore = defineStore('env', () => {
 
       const { host, port, proxyType } = kernelProxy
       const server = `${formatProxyHost(host)}:${port}`
-      const proxyServerList = [`http://${server}`, `socks5://${server}`, `socks=${server}`]
+      const proxyServerList = [
+        `http://${server}`,
+        `https://${server}`,
+        `socks5://${server}`,
+        `socks=${server}`,
+      ]
       if (proxyType === 'mixed') {
         proxyServerList.push(
           `http://127.0.0.1:${port}`,
+          `https://127.0.0.1:${port}`,
           `socks5://127.0.0.1:${port}`,
           `socks=127.0.0.1:${port}`,
         )
@@ -66,6 +71,7 @@ export const useEnvStore = defineStore('env', () => {
 
   const setSystemProxy = async () => {
     const proxyBypassList = appSettings.app.proxyBypassList
+    const services = appSettings.app.systemProxyServices
     let proxyEndpoint = kernelApiStore.getProxyEndpoint()
     if (!proxyEndpoint) {
       await kernelApiStore.updateConfig('inbound', undefined)
@@ -73,13 +79,14 @@ export const useEnvStore = defineStore('env', () => {
     proxyEndpoint = kernelApiStore.getProxyEndpoint()
     if (!proxyEndpoint) throw 'home.overview.needPort'
     const server = `${formatProxyHost(proxyEndpoint.host)}:${proxyEndpoint.port}`
-    await SetSystemProxy(true, server, proxyEndpoint.proxyType, proxyBypassList)
+    await SetSystemProxy(true, server, proxyEndpoint.proxyType, proxyBypassList, services)
     systemProxy.value = true
   }
 
   const clearSystemProxy = async () => {
     const proxyBypassList = appSettings.app.proxyBypassList
-    await SetSystemProxy(false, '', undefined, proxyBypassList)
+    const services = appSettings.app.systemProxyServices
+    await SetSystemProxy(false, '', undefined, proxyBypassList, services)
     systemProxy.value = false
   }
 
@@ -88,15 +95,25 @@ export const useEnvStore = defineStore('env', () => {
     else await clearSystemProxy()
   }
 
+  const setSystemDNS = async (proxy: boolean) => {
+    const supportedSystems: App.OS[] = [OS.Linux, OS.Darwin]
+    if (!supportedSystems.includes(env.value.os)) return
+    const servers = proxy ? appSettings.app.systemProxyDNS : appSettings.app.systemDefaultDNS
+    await SetSystemDNS(servers, appSettings.app.systemProxyServices)
+    systemDNSSet.value = proxy
+  }
+
   watch(systemProxy, updateTrayAndMenus)
 
   return {
     env,
     setupEnv,
     systemProxy,
+    systemDNSSet,
     setSystemProxy,
     clearSystemProxy,
     switchSystemProxy,
     updateSystemProxyStatus,
+    setSystemDNS,
   }
 })

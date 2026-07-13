@@ -52,6 +52,9 @@ export default {
     downloading: 'Downloading...',
     empty: 'Data is empty',
     pressAgainToClose: 'Press again to close the modal',
+    modalList: 'Modal List',
+    openAll: 'Open all',
+    minimizeAll: 'Minimize all',
   },
   kernel: {
     rule: 'Rule',
@@ -115,6 +118,10 @@ export default {
         system: 'System',
         gvisor: 'gVisor',
         mixed: 'Mixed',
+      },
+      direct: {
+        network: 'Listen Network',
+        default: 'Both if empty',
       },
       mixedPort: 'Mixed Port',
       httpPort: 'HTTP(s) Port',
@@ -308,6 +315,7 @@ export default {
     notFound: 'Core Not Found',
     insertionPoint: 'The new rule will be inserted here',
     addInsertionPoint: 'Add insertion point',
+    missingInsertionPoint: 'Please add an insertion point first',
   },
   router: {
     overview: 'Overview',
@@ -511,6 +519,7 @@ export default {
     empty: 'The ruleset list is empty. Please{action}or import from the{import}first.',
     rulesetCount: 'Ruleset Count',
     editRuleset: 'Edit Rules',
+    addToProfile: 'Add to Profile',
     selectRuleType: 'Select Rule Type',
   },
   plugin: {
@@ -677,6 +686,11 @@ export default {
     },
     proxyBypassList: 'Proxy Bypass List',
     proxyBypassListTips: 'Separate with semicolons',
+    systemProxyServices: 'Network Service Names',
+    autoSetSystemDNS: 'Auto-configure System DNS',
+    autoSetSystemDNSTips: 'Used for DNS hijacking in TUN mode',
+    systemProxyDNS: 'DNS While Core Is Running',
+    systemDefaultDNS: 'DNS While Core Is Stopped',
     autoStartKernel: 'Start core on launch',
     realMemoryUsage: 'Show actual core memory usage',
     autoRestartKernel: {

@@ -4,21 +4,27 @@ import { useI18n, I18nT } from 'vue-i18n'
 
 import { RemoveFile, WriteFile, OpenURI } from '@/bridge'
 import { DraggableOptions, ViewOptions } from '@/constant/app'
-import { EmptyRuleSet } from '@/constant/kernel'
+import { BuiltInOutbound, EmptyRuleSet } from '@/constant/kernel'
+import { DefaultRouteRule, DefaultRouteRuleset } from '@/constant/profile'
 import { View } from '@/enums/app'
-import { RulesetFormat } from '@/enums/kernel'
-import { type RuleSet, useRulesetsStore, useAppSettingsStore, useEnvStore } from '@/stores'
-import { debounce, formatRelativeTime, ignoredError, formatDate, message } from '@/utils'
-
-import { useModal } from '@/components/Modal'
-
-import type { Menu } from '@/types/app'
+import { RulesetFormat, RulesetType, RuleType } from '@/enums/kernel'
+import { useRulesetsStore, useAppSettingsStore, useEnvStore, useProfilesStore } from '@/stores'
+import {
+  debounce,
+  formatRelativeTime,
+  ignoredError,
+  formatDate,
+  message,
+  picker,
+  deepClone,
+  modal,
+} from '@/utils'
 
 import RulesetForm from './components/RulesetForm.vue'
 import RulesetHub from './components/RulesetHub.vue'
 import RulesetView from './components/RulesetView.vue'
 
-const sourceMenuList: Menu[] = [
+const sourceMenuList: App.Menu[] = [
   {
     label: 'rulesets.editRuleset',
     handler: (id: string) => handleEditRulesetList(id),
@@ -36,24 +42,14 @@ const sourceMenuList: Menu[] = [
   },
 ]
 
-const binaryMenuList: Menu[] = [
-  {
-    label: 'common.none',
-    handler: (id: string) => {
-      console.log(id)
-      message.info('common.none')
-    },
-  },
-]
-
 const { t } = useI18n()
-const [Modal, modalApi] = useModal({})
 const envStore = useEnvStore()
 const rulesetsStore = useRulesetsStore()
 const appSettingsStore = useAppSettingsStore()
+const profilesStore = useProfilesStore()
 
 const handleImportRuleset = async () => {
-  modalApi.setProps({
+  const m = modal({
     title: 'rulesets.hub',
     cancelText: 'common.close',
     height: '90',
@@ -61,18 +57,16 @@ const handleImportRuleset = async () => {
     submit: false,
     maskClosable: true,
   })
-  modalApi.setContent(RulesetHub)
-  modalApi.open()
+  m.setContent(RulesetHub).open()
 }
 
 const handleShowRulesetForm = async (id?: string, isUpdate = false) => {
-  modalApi.setProps({
+  const m = modal({
     title: isUpdate ? 'common.edit' : 'common.add',
     maxHeight: '90',
     minWidth: '70',
   })
-  modalApi.setContent(RulesetForm, { id, isUpdate })
-  modalApi.open()
+  m.setContent(RulesetForm, { id, isUpdate }).open()
 }
 
 const handleUpdateRulesets = async () => {
@@ -86,16 +80,15 @@ const handleUpdateRulesets = async () => {
 }
 
 const handleEditRulesetList = (id: string) => {
-  modalApi.setProps({
+  const m = modal({
     title: rulesetsStore.getRulesetById(id)?.name,
     height: '90',
     width: '90',
   })
-  modalApi.setContent(RulesetView, { id })
-  modalApi.open()
+  m.setContent(RulesetView, { id }).open()
 }
 
-const handleUpdateRuleset = async (r: RuleSet) => {
+const handleUpdateRuleset = async (r: App.RuleSet) => {
   try {
     await rulesetsStore.updateRuleset(r.id)
   } catch (error: any) {
@@ -104,7 +97,7 @@ const handleUpdateRuleset = async (r: RuleSet) => {
   }
 }
 
-const handleDeleteRuleset = async (r: RuleSet) => {
+const handleDeleteRuleset = async (r: App.RuleSet) => {
   try {
     await ignoredError(RemoveFile, r.path)
     await rulesetsStore.deleteRuleset(r.id)
@@ -114,7 +107,7 @@ const handleDeleteRuleset = async (r: RuleSet) => {
   }
 }
 
-const handleDisableRuleset = async (r: RuleSet) => {
+const handleDisableRuleset = async (r: App.RuleSet) => {
   r.disabled = !r.disabled
   rulesetsStore.editRuleset(r.id, r)
 }
@@ -133,10 +126,87 @@ const handleClearRuleset = async (id: string) => {
   }
 }
 
-const generateMenus = (r: RuleSet) => {
+const handleAddRulesetToProfile = async (id: string) => {
+  const ruleset = rulesetsStore.getRulesetById(id)
+  if (!ruleset) return
+
+  try {
+    const { items } = await picker.resource('profile', 'profiles.select', { max: 1, min: 1 })
+    const profile = items[0]
+    if (!profile) return
+
+    const insertionPointIndex = profile.route.rules.findIndex(
+      (rule) => rule.type === RuleType.InsertionPoint,
+    )
+
+    if (insertionPointIndex === -1) {
+      message.warn('kernel.missingInsertionPoint')
+      return
+    }
+
+    const profileRuleset = profile.route.rule_set.find(
+      (item) => item.type === RulesetType.Local && item.path === ruleset.id,
+    )
+    if (
+      profileRuleset &&
+      profile.route.rules.some(
+        (rule) =>
+          rule.type === RuleType.RuleSet && rule.payload.split(',').includes(profileRuleset.id),
+      )
+    ) {
+      message.info('common.added')
+      return
+    }
+
+    const outboundOptions = [
+      ...BuiltInOutbound.map((outbound) => ({ label: outbound, value: outbound })),
+      ...profile.outbounds.map((outbound) => ({
+        label: outbound.tag,
+        value: outbound.id,
+        description: outbound.type,
+      })),
+    ]
+    const target = await picker.single('kernel.route.rules.outbound', outboundOptions, [
+      profile.outbounds[0]?.id || BuiltInOutbound[0]!,
+    ])
+
+    if (!target) return
+
+    const nextProfile = deepClone(profile)
+    let rulesetReferenceId = profileRuleset?.id
+    if (!rulesetReferenceId) {
+      const rulesetReference = {
+        ...DefaultRouteRuleset(),
+        tag: ruleset.name,
+        format: ruleset.format,
+        path: ruleset.id,
+      }
+      nextProfile.route.rule_set.unshift(rulesetReference)
+      rulesetReferenceId = rulesetReference.id
+    }
+
+    nextProfile.route.rules.splice(insertionPointIndex + 1, 0, {
+      ...DefaultRouteRule(),
+      payload: rulesetReferenceId,
+      outbound: target,
+    })
+
+    await profilesStore.editProfile(nextProfile.id, nextProfile)
+    message.success('common.success')
+  } catch (error) {
+    message.error(error)
+  }
+}
+
+const generateMenus = (r: App.RuleSet) => {
+  const addToProfileMenu: App.Menu = {
+    label: 'rulesets.addToProfile',
+    handler: (id: string) => handleAddRulesetToProfile(id),
+  }
+
   return {
-    [RulesetFormat.Source]: sourceMenuList,
-    [RulesetFormat.Binary]: binaryMenuList,
+    [RulesetFormat.Source]: [addToProfileMenu, ...sourceMenuList],
+    [RulesetFormat.Binary]: [addToProfileMenu],
   }[r.format].map((v) => ({ ...v, handler: () => v.handler?.(r.id) }))
 }
 
@@ -276,6 +346,4 @@ const onSortUpdate = debounce(rulesetsStore.saveRulesets, 1000)
       </template>
     </Card>
   </div>
-
-  <Modal />
 </template>

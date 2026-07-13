@@ -1,4 +1,4 @@
-import { render, h, type VNode, nextTick } from 'vue'
+import { render, h, type VNode } from 'vue'
 
 import i18n from '@/lang'
 import { APP_TITLE, bindAppContext, normalizeErrorMessage, sampleID } from '@/utils'
@@ -8,12 +8,14 @@ import MessageComp from '@/components/Message/index.vue'
 import { useModal } from '@/components/Modal'
 import PickerComp from '@/components/Picker/index.vue'
 import PromptComp from '@/components/Prompt/index.vue'
+import ResourceSelectComp from '@/components/ResourceSelect/index.vue'
 
 import type { ConfirmOptions } from '@/components/Confirm/index.vue'
 import type { Props as InputProps } from '@/components/Input/index.vue'
 import type { MessageIcon } from '@/components/Message/index.vue'
 import type { Props as ModalProps, Slots as ModalSlots } from '@/components/Modal/index.vue'
 import type { PickerItem } from '@/components/Picker/index.vue'
+import type { ResourceSelectProps } from '@/components/ResourceSelect/index.vue'
 
 const ContainerCssText = `
     position: fixed;
@@ -129,6 +131,32 @@ class Message {
   }
 }
 
+const ResourceTypeMap = {
+  profile: 'profile',
+  subscription: 'subscription',
+  ruleset: 'ruleset',
+  plugin: 'plugin',
+  scheduledtask: 'scheduledtask',
+  1: 'profile',
+  2: 'subscription',
+  3: 'ruleset',
+  4: 'plugin',
+  5: 'scheduledtask',
+} as const
+
+type ResourceResultMap = {
+  profile: App.Profile
+  subscription: App.Subscription
+  ruleset: App.RuleSet
+  plugin: App.Plugin
+  scheduledtask: App.ScheduledTask
+  1: App.Profile
+  2: App.Subscription
+  3: App.RuleSet
+  4: App.Plugin
+  5: App.ScheduledTask
+}
+
 class Picker {
   constructor() {}
 
@@ -138,6 +166,33 @@ class Picker {
 
   public multi = <T>(title: string, options: PickerItem<T>[], initialValue: T[] = []) => {
     return this.buildPicker('multi', title, options, initialValue)
+  }
+
+  public resource = <T extends keyof typeof ResourceTypeMap>(
+    type: T,
+    title: string,
+    options?: Partial<ResourceSelectProps>,
+    initialValue?: string[],
+  ): Promise<{ ids: string[]; items: ResourceResultMap[T][] }> => {
+    return new Promise((resolve) => {
+      const dom = document.createElement('div')
+      const vnode = h(ResourceSelectComp, {
+        type: ResourceTypeMap[type],
+        title,
+        renderSlot: false,
+        openImmediate: true,
+        modelValue: initialValue,
+        onSubmit(ids, items) {
+          resolve({ ids, items } as any)
+          render(null, dom)
+          dom.remove()
+        },
+        ...options,
+      })
+      bindAppContext(vnode)
+      document.body.appendChild(dom)
+      render(vnode, dom)
+    })
   }
 
   private buildPicker = <ValueType, PickerType extends 'single' | 'multi'>(
@@ -241,23 +296,31 @@ export const confirm = (
 }
 
 export const modal = (options: ModalProps = {}, slots: ModalSlots = {}) => {
-  const [Modal, api] = useModal(options, slots)
+  const id = 'Modal-' + sampleID()
+
+  const container = document.createElement('div')
+  container.id = id
+  container.dataset['title'] = options.title
+  document.body.appendChild(container)
+
+  const [Modal, api] = useModal(
+    {
+      ...options,
+      container: '#' + id,
+      afterDestroy() {
+        options.afterDestroy?.()
+        render(null, container)
+        container.remove()
+      },
+    },
+    slots,
+  )
   const vnode = h(Modal)
   bindAppContext(vnode)
 
-  const container = document.createElement('div')
-  document.body.appendChild(container)
   render(vnode, container)
 
-  const destroy = () => {
-    api.close()
-    nextTick(() => {
-      render(null, container)
-      container.remove()
-    })
-  }
-  const powerApi = { ...api, destroy }
-  return powerApi
+  return api
 }
 
 export const picker = new Picker()
