@@ -327,12 +327,34 @@ func setLinuxSystemProxy(server string, enabled bool, proxyType string, bypass s
 			proxyTypeValue = "1"
 		}
 
+		mode := "none"
+		if enabled {
+			mode = "manual"
+		}
+		bypassItems := splitBypass(bypass)
+		quotedBypassItems := make([]string, 0, len(bypassItems))
+		for _, item := range bypassItems {
+			quotedBypassItems = append(quotedBypassItems, "'"+strings.ReplaceAll(item, "'", "\\'")+"'")
+		}
+		ignoreHosts := "[" + strings.Join(quotedBypassItems, ",") + "]"
+
 		return runSystemProxyCommands(
 			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "ProxyType", proxyTypeValue},
 			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "httpProxy", enabledURL(httpEnabled, "http://"+server)},
 			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "httpsProxy", enabledURL(httpEnabled, "http://"+server)},
 			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "socksProxy", enabledURL(socksEnabled, "socks://"+server)},
 			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "NoProxyFor", normalizeBypass(bypass, ",")},
+			// ponytail: also mirror to gsettings for glib-based apps on KDE;
+			// if gsettings is unavailable the error propagates but kwriteconfig
+			// has already set the proxy correctly for native KDE apps
+			[]string{"gsettings", "set", "org.gnome.system.proxy", "mode", mode},
+			[]string{"gsettings", "set", "org.gnome.system.proxy.http", "host", enabledURL(httpEnabled, serverName)},
+			[]string{"gsettings", "set", "org.gnome.system.proxy.http", "port", enabledURL(httpEnabled, serverPort, "0")},
+			[]string{"gsettings", "set", "org.gnome.system.proxy.https", "host", enabledURL(httpEnabled, serverName)},
+			[]string{"gsettings", "set", "org.gnome.system.proxy.https", "port", enabledURL(httpEnabled, serverPort, "0")},
+			[]string{"gsettings", "set", "org.gnome.system.proxy.socks", "host", enabledURL(socksEnabled, serverName)},
+			[]string{"gsettings", "set", "org.gnome.system.proxy.socks", "port", enabledURL(socksEnabled, serverPort, "0")},
+			[]string{"gsettings", "set", "org.gnome.system.proxy", "ignore-hosts", ignoreHosts},
 		)
 
 	case "gnome":
