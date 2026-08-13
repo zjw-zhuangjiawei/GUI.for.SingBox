@@ -316,6 +316,7 @@ export default {
     insertionPoint: 'The new rule will be inserted here',
     addInsertionPoint: 'Add insertion point',
     missingInsertionPoint: 'Please add an insertion point first',
+    startupFailed: 'Startup failed, please Check logs for details',
   },
   router: {
     overview: 'Overview',
@@ -806,6 +807,7 @@ export default {
     plugins: 'Plugins',
   },
   commands: {
+    title: 'Commands',
     noMatching: 'No matching commands',
   },
 }
