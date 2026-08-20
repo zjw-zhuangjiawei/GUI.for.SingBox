@@ -43,7 +43,7 @@ const props = withDefaults(defineProps<Props>(), {
   delay: 0,
 })
 
-const emits = defineEmits(['change', 'update:modelValue', 'submit'])
+const emits = defineEmits(['change', 'update:modelValue', 'submit', 'keydown'])
 
 const showEdit = ref(false)
 const isComposing = ref(false)
@@ -142,11 +142,12 @@ defineExpose({
       'bg-color': !editable || showEdit,
       'is-editable': editable && !showEdit,
       'no-max-width': !maxWidth,
+      'is-tags': !!$slots.default,
       [size]: true,
       disabled,
     }"
     :style="{
-      height: type === 'code' ? '' : size === 'small' ? '26px' : '30px',
+      height: $slots.default || type === 'code' ? '' : size === 'small' ? '26px' : '30px',
     }"
     class="gui-input inline-flex items-center rounded-4 cursor-pointer px-4"
   >
@@ -174,6 +175,25 @@ defineExpose({
         class="code w-full overflow-y-auto"
         @change="(value: string) => onInput({ target: { value } })"
       />
+      <div v-else-if="$slots.default" class="gui-input-tags w-full flex flex-wrap items-center">
+        <slot />
+        <input
+          ref="inputRef"
+          :value="modelValue"
+          :placeholder="placeholder"
+          :type="type"
+          :disabled="disabled"
+          autocomplete="off"
+          class="flex-1 inline-block py-6 outline-none border-0 bg-transparent"
+          @input="onInput"
+          @compositionstart="onCompositionStart"
+          @compositionend="onCompositionEnd"
+          @blur="onSubmit"
+          @keydown="emits('keydown', $event)"
+          @keydown.enter="onKeydownEnter"
+          @keydown.esc.stop.prevent="inputRef?.blur"
+        />
+      </div>
       <input
         v-else
         ref="inputRef"
@@ -187,6 +207,7 @@ defineExpose({
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
         @blur="onSubmit"
+        @keydown="emits('keydown', $event)"
         @keydown.enter="onKeydownEnter"
         @keydown.esc.stop.prevent="inputRef?.blur"
       />
@@ -248,6 +269,17 @@ defineExpose({
 .small {
   input {
     font-size: 12px;
+  }
+}
+
+.is-tags {
+  height: auto;
+  min-height: 30px;
+  padding: 2px 4px;
+  .gui-input-tags {
+    input {
+      min-width: 60px;
+    }
   }
 }
 </style>

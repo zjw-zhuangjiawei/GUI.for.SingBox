@@ -257,7 +257,7 @@ func setWindowsSystemProxy(server string, enabled bool, proxyType string, bypass
 	return runSystemProxyCommands(
 		[]string{"reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", enabledValue, "/f"},
 		[]string{"reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyServer", "/d", proxyServer, "/f"},
-		[]string{"reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyOverride", "/d", normalizeBypass(bypass, ";"), "/f"},
+		[]string{"reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyOverride", "/d", normalizeBypass(ensureLoopbackBypass(bypass), ";"), "/f"},
 	)
 }
 
@@ -283,7 +283,7 @@ func setDarwinSystemProxy(server string, enabled bool, proxyType string, bypass 
 			socksState = state
 		}
 
-		bypassItems := splitBypass(bypass)
+		bypassItems := splitBypass(ensureLoopbackBypass(bypass))
 		if len(bypassItems) == 0 {
 			bypassItems = []string{"Empty"}
 		}
@@ -331,7 +331,7 @@ func setLinuxSystemProxy(server string, enabled bool, proxyType string, bypass s
 		if enabled {
 			mode = "manual"
 		}
-		bypassItems := splitBypass(bypass)
+		bypassItems := splitBypass(ensureLoopbackBypass(bypass))
 		quotedBypassItems := make([]string, 0, len(bypassItems))
 		for _, item := range bypassItems {
 			quotedBypassItems = append(quotedBypassItems, "'"+strings.ReplaceAll(item, "'", "\\'")+"'")
@@ -343,7 +343,7 @@ func setLinuxSystemProxy(server string, enabled bool, proxyType string, bypass s
 			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "httpProxy", enabledURL(httpEnabled, "http://"+server)},
 			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "httpsProxy", enabledURL(httpEnabled, "http://"+server)},
 			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "socksProxy", enabledURL(socksEnabled, "socks://"+server)},
-			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "NoProxyFor", normalizeBypass(bypass, ",")},
+			[]string{kwriteconfig, "--file", "kioslaverc", "--group", "Proxy Settings", "--key", "NoProxyFor", normalizeBypass(ensureLoopbackBypass(bypass), ",")},
 			// ponytail: also mirror to gsettings for glib-based apps on KDE;
 			// if gsettings is unavailable the error propagates but kwriteconfig
 			// has already set the proxy correctly for native KDE apps
@@ -370,7 +370,7 @@ func setLinuxSystemProxy(server string, enabled bool, proxyType string, bypass s
 		if enabled {
 			mode = "manual"
 		}
-		bypassItems := splitBypass(bypass)
+		bypassItems := splitBypass(ensureLoopbackBypass(bypass))
 		quotedBypassItems := make([]string, 0, len(bypassItems))
 		for _, item := range bypassItems {
 			quotedBypassItems = append(quotedBypassItems, "'"+strings.ReplaceAll(item, "'", "\\'")+"'")
@@ -569,6 +569,19 @@ func splitServer(server string) (string, string) {
 		return server, ""
 	}
 	return serverName, serverPort
+}
+
+// ensureLoopbackBypass guarantees the system-proxy bypass list always covers
+// loopback, so the app's own Clash API calls (and any localhost traffic) never
+// route back into the proxy. Never removable by user config.
+func ensureLoopbackBypass(bypass string) string {
+	items := splitBypass(bypass)
+	for _, v := range []string{"localhost", "127.0.0.1", "::1"} {
+		if !slices.Contains(items, v) {
+			items = append(items, v)
+		}
+	}
+	return strings.Join(items, ";")
 }
 
 func splitBypass(bypass string) []string {

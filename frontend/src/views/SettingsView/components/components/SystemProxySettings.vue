@@ -1,9 +1,25 @@
 <script lang="ts" setup>
+import { computed } from 'vue'
+
 import { OS } from '@/enums/app'
 import { useAppSettingsStore, useEnvStore } from '@/stores'
 
 const appSettings = useAppSettingsStore()
 const envStore = useEnvStore()
+
+// Always bypassed so the app's own Clash API calls never loop back into the proxy.
+const ALWAYS_BYPASS = ['localhost', '127.0.0.1', '::1']
+
+const bypassItems = computed({
+  get: () =>
+    appSettings.app.proxyBypassList
+      .split(';')
+      .map((v) => v.trim())
+      .filter(Boolean),
+  set: (val: string[]) => {
+    appSettings.app.proxyBypassList = val.join(';')
+  },
+})
 </script>
 
 <template>
@@ -61,10 +77,10 @@ const envStore = useEnvStore()
         {{ $t('settings.proxyBypassList') }}
         <span class="font-normal text-12">({{ $t('settings.proxyBypassListTips') }})</span>
       </div>
-      <CodeEditor
-        v-model="appSettings.app.proxyBypassList"
-        editable
-        lang="yaml"
+      <TagInput
+        v-model="bypassItems"
+        :fixed="ALWAYS_BYPASS"
+        :placeholder="$t('settings.proxyBypassListPlaceholder')"
         class="min-w-256"
       />
     </div>

@@ -36,6 +36,7 @@ declare module 'vue' {
     Table: (typeof import('./Table/index.vue'))['default']
     Tabs: (typeof import('./Tabs/index.vue'))['default']
     Tag: (typeof import('./Tag/index.vue'))['default']
+    TagInput: (typeof import('./TagInput/index.vue'))['default']
     Tips: (typeof import('./Tips/index.vue'))['default']
     TrafficChart: (typeof import('./TrafficChart/index.vue'))['default']
   }
