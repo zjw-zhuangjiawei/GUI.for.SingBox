@@ -3,9 +3,7 @@ declare namespace App {
   type Theme = 'auto' | 'light' | 'dark'
   type Color = 'default' | 'green' | 'purple' | 'custom'
   type View = 'grid' | 'list'
-  type WindowStartState =
-    | 0 // Normal
-    | 2 // Minimised
+  type WindowStartState = 'normal' | 'minimised'
   type WebviewGpuPolicy =
     | 0 // Always
     | 1 // OnDemand
@@ -14,9 +12,13 @@ declare namespace App {
   type RequestMethod = 'GET' | 'POST' | 'DELETE' | 'PUT' | 'HEAD' | 'PATCH'
 
   interface AppEnv {
+    appId: string
     appName: string
     appVersion: string
     basePath: string
+    dataDir: string
+    args: string[]
+    launchArgs: string[]
     appPath: string
     os: OS
     arch: string
@@ -134,6 +136,7 @@ declare namespace App {
     type: 'Http' | 'File'
     url: string
     path: string
+    hash?: string
     triggers: (
       | 'on::enabled'
       | 'on::disabled'
@@ -298,6 +301,7 @@ declare namespace App {
   }
   type OutboundType = 'direct' | 'block' | 'selector' | 'urltest'
   type TunStack = 'system' | 'gvisor' | 'mixed'
+  type TunDnsMode = '' | 'disabled' | 'native' | 'hijack'
   type Network = 'tcp' | 'udp'
   type RuleSetType = 'inline' | 'local' | 'remote'
   type RuleSetFormat = 'source' | 'binary'
@@ -441,6 +445,7 @@ declare namespace App {
       route_exclude_address: string[]
       endpoint_independent_nat: boolean
       stack: TunStack
+      dns_mode: TunDnsMode
     }
   }
 
