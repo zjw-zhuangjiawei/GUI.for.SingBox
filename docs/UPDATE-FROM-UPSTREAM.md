@@ -33,7 +33,7 @@ git rev-list --count main..upstream/main
 git merge upstream/main --no-edit
 
 # 5. 构建（wails 会自动跑 pnpm install + 前端构建）
-wails build -tags webkit2_41
+~/go/bin/wails build -tags webkit2_41
 
 # 6. 安装并重启
 mkdir -p ~/.local/opt/gui-for-singbox
@@ -47,6 +47,18 @@ git push origin main
 
 构建产物在 `build/bin/GUI.for.SingBox`，Linux 上需要 `-tags webkit2_41`
 （旧版 WebKitGTK 兼容），见 `BUILD.md`。
+
+### 必须用 wails v2，不能用 pacman 的 wails
+
+本项目是 wails **v2** 项目，而 Arch 官方源里的 `wails` 包已是 **v3**，
+v3 会报 `task: No Taskfile found`（它改成了 Taskfile 驱动）。
+
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+~/go/bin/wails version   # 应显示 v2.x
+```
+
+所以上面的构建命令写的是 `~/go/bin/wails`，不要用 `/usr/bin/wails`。
 
 ## 注意事项
 
