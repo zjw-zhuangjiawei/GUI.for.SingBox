@@ -1,19 +1,19 @@
 # Wails v3 迁移（`wails-v3` 分支）
 
-主线 `main` 保持 v2。所有 v3 工作只在这个分支上。目标是先让 v3 能构建、能起窗口、
-`bridge` 层不依赖具体 GUI 工具包，再逐个补齐前端与平台集成。
+主线 `main` 保持 v2。**这个分支已经完全切到 v3**：`wails/v2` 依赖、v2 入口、v2 CLI 配置都删掉了，
+`main.go` 就是 v3 入口。目标是先让 v3 能构建、能起窗口、`bridge` 层不依赖具体 GUI 工具包，
+再逐个补齐平台集成。
 
 ## 构建
 
 ```bash
-# v2（与 main 一致，任何时候都应能构建）
-~/go/bin/wails build -tags webkit2_41
+# 前端（dist 是 go:embed 进来的，必须先建）
+cd frontend && pnpm install && pnpm build-only && cd ..
 
-# v3（同一棵树，用 build tag 切换 main 包）
-go build -tags "v3 gtk3" -o /tmp/gfs-v3 .
+# Linux
+go build -tags gtk3 -o GUI.for.SingBox .
 ```
 
-`main.go` 带 `//go:build !v3`，`main_v3.go` 带 `//go:build v3`，两者共享 `bridge` 包。
 v3 不需要 `Taskfile.yml`，`go build` 直接出可执行文件；正式打包阶段再加。
 
 Linux 构建标签：`gtk3`（webkit2gtk-4.1，本机 2.54.2）或 `gtk4`（webkitgtk-6.0）。
@@ -59,7 +59,7 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
   `pnpm type-check` 阶段报错，而不是运行时静默失效。
 - `go/bridge/App.js` 改为 `export * from '../../guiforcores/bridge/app.js'`，保留
   `@wails/go/bridge/App` 这个 import 路径；删除 v2 生成的 `App.d.ts` 和 `go/models.ts`。
-- 生成绑定：`wails generate bindings -f "-tags v3,gtk3" -clean=false -d frontend/src/bridge/wailsjs .`
+- 生成绑定（用 **v3 CLI** `/usr/bin/wails`）：`wails generate bindings -f "-tags gtk3" -clean=false -d frontend/src/bridge/wailsjs .`
   （**不要加 `-b`**，加了会 import `/wails/runtime.js`，vite 解析不到）。
   生成器输出 JSDoc 类型的 `.js` 而不是 `.d.ts`，所以 `tsconfig.app.json` 需要 `allowJs: true`。
 - `frontend/index.html` 的 IPC 检测从 `window.WailsInvoke` 改成 `window._wails`。
@@ -98,14 +98,14 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
   `v3app.Menu.SetApplicationMenu(...)`。只在 `Env.OS == "darwin"` 时执行。
 - CI（`.github/workflows/release.yml`）：三个 job 的 `go install wails v2` 和 `wails build`
   全部删掉，改成 `go build`：
-  - Windows：`go build -tags v3 -trimpath -ldflags="-s -w -H windowsgui" -o build/bin/APP.exe .`
-  - Linux：`go build -tags "v3 gtk3" -trimpath -ldflags="-s -w" -o build/bin/APP .`
+  - Windows：`go build -trimpath -ldflags="-s -w -H windowsgui" -o build/bin/APP.exe .`
+  - Linux：`go build -tags gtk3 -trimpath -ldflags="-s -w" -o build/bin/APP .`
   - macOS：手动拼 `.app` 目录 + `build/darwin/Info.static.plist`（新增的静态 plist，
-    `APP_NAME` / `APP_VERSION` 由 CI sed 替换），然后 `go build -tags v3`。
+    `APP_NAME` / `APP_VERSION` 由 CI sed 替换），然后 `go build`。
   - 顺手删掉 macOS job 里对 v2 `AppDelegate.m` 的 `go mod vendor` + sed 补丁。
 - **没有加 `Taskfile.yml` / `build/config.yml`**：v3 的 `go build` 已经够用，Taskfile 只是
   `wails3` CLI 打包（`.icns`、`.syso`、安装包）才需要，等真要做安装包再加。
-- 本地能验证的：Windows 交叉编译通过（`GOOS=windows go build -tags v3`）、Linux 构建通过、
+- 本地能验证的：Windows 交叉编译通过（`GOOS=windows go build`）、Linux 构建通过、
   v3 二进制启动无回归。**macOS 那段 CI 没法在本地验证**（需要 macOS SDK 和 cgo），
   首次真跑 release 时要盯着。
 
@@ -129,25 +129,32 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
 | `-tags webkit2_41` | `-tags gtk3` / `gtk4` |
 | `wails.json` | `Taskfile.yml` + `build/config.yml`（未做） |
 
-## 还没做（第 6 步：收尾）
+### 第 6 步：删掉 v2（提交见下）
 
-1. 删掉 `wails/v2` 依赖、`main.go`、`bridge/host.go` 里 v2 那套映射——**要等 v3 在三个平台都验过**，
-   否则这条分支就没有能跑的 v2 兜底了。
-2. 安装包：`.icns` / `.syso` / `.desktop` / winget 需要 `Taskfile.yml` + `wails3 package` 才有。
-3. 前端 Windows/macOS 行为（透明窗口、Mica/Acrylic、macOS 隐藏标题栏）需要上机验证。
-4. 托盘菜单点击、通知点击回调只在 Linux 验证过。
-5. macOS 的 `.app` 没有图标（`CFBundleIconFile` 从静态 plist 里去掉了，仓库里没有 `.icns`）。
+- `git rm main.go`（v2 入口），`main_v3.go` → `main.go`、`main_v3_test.go` → `main_test.go`，
+  去掉 `//go:build v3` 标签；CI 的三个 `-tags v3` 相应改成无标签（Windows/macOS）和 `-tags gtk3`（Linux）。
+- `go mod tidy` 后 `go.mod` 只剩 `github.com/wailsapp/wails/v3 v3.1.0`，`wails/v2` 及其依赖全部消失。
+- 删 `wails.json`（v2 CLI 的配置，v3 的 `go build` 不读它；前端构建由 pnpm 直接跑）。
+- **这条分支现在没有 v2 兜底了**。要回到 v2 就用 `main` 分支。
+
+## 还没做
+
+1. 安装包：`.icns` / `.syso` / `.desktop` / winget 需要 `Taskfile.yml` + `wails3 package` 才有。
+2. 前端 Windows/macOS 行为（透明窗口、Mica/Acrylic、macOS 隐藏标题栏）需要上机验证。
+3. 托盘菜单点击、通知点击回调只在 Linux 验证过。
+4. macOS 的 `.app` 没有图标（`CFBundleIconFile` 从静态 plist 里去掉了，仓库里没有 `.icns`）。
+5. `build/darwin/Info.plist`（Go template）与 `build/windows/{info.json,wails.exe.manifest}` 是 v2 打包
+   残留，现在没人读，留给以后做安装包时参考。
 
 ## 已知坑
 
-- `go.mod` 同时有 `wails/v2` 和 `wails/v3`，`go mod tidy` 不会改动既有版本，但最终迁移完要删 v2 依赖。
+- 第 6 步之前 `go.mod` 同时有 `wails/v2` 和 `wails/v3`；现在只剩 v3。若上游 `main` 又改了 v2 入口，合并时会冲突在 `main.go`（见下）。
 - v3 进程对 SIGTERM 不退出（`PreventExit` 默认 true，`ShouldQuit` 返回 false），
   手动测试要 `kill -9`。这与 v2「关窗即隐藏到托盘」的行为一致，不是新 bug。
 - `frontend/dist` 是 `go:embed` 进来的，v3 构建前要先 `pnpm build-only`（与 v2 相同）。
 - **这个分支上不要再跑 `~/go/bin/wails build`**：v2 CLI 会用 v2 的 Go 代码重新生成
   `frontend/src/bridge/wailsjs/`（`runtime/*`、`go/bridge/App.js`、`go/models.ts`），
   把 v3 的前端 shim 覆盖掉，前端随即 type-check 失败。v3 的构建路径是
-  `pnpm build-only` + `go build -tags "v3 gtk3"`。
-- 本分支的前端只服务 v3（`window._wails` 检测）。若要用 v2 编译验证 Go 侧，UI 会显示
-  「WebView2 未安装」兜底页，属预期。
+  `pnpm build-only` + `go build -tags gtk3`。
+- 本分支的前端只服务 v3（`window._wails` 检测）；v2 编译出来的包 UI 会显示「WebView2 未安装」兜底页。
 - 会话锁屏时截图拿不到窗口内容（KWin 不渲染 webview 表面），只能看到白底；验证 UI 要看日志或解锁后看屏幕。

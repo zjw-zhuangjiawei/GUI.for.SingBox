@@ -1,5 +1,3 @@
-//go:build v3
-
 package main
 
 import (

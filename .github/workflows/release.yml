@@ -60,7 +60,7 @@ jobs:
             $env:GOARCH=$arch
 
             Write-Host "==> Building Windows $arch..."
-            go build -tags v3 -trimpath -ldflags="-s -w -H windowsgui" -o "build/bin/$env:APP_NAME.exe" .
+            go build -trimpath -ldflags="-s -w -H windowsgui" -o "build/bin/$env:APP_NAME.exe" .
 
             cd build/bin
             $zipName = "$env:APP_NAME-windows-$arch.zip"
@@ -105,7 +105,7 @@ jobs:
             mkdir -p "$app_dir/Contents/MacOS"
             sed -e "s/APP_NAME/$APP_NAME/g" -e "s/APP_VERSION/${APP_VERSION#v}/g" \
               build/darwin/Info.static.plist > "$app_dir/Contents/Info.plist"
-            go build -tags v3 -trimpath -ldflags="-s -w" -o "$app_dir/Contents/MacOS/$APP_NAME" .
+            go build -trimpath -ldflags="-s -w" -o "$app_dir/Contents/MacOS/$APP_NAME" .
 
             cd build/bin
             zip -q -r $APP_NAME-darwin-$arch.zip $APP_NAME.app
@@ -153,7 +153,7 @@ jobs:
             export GOOS=linux GOARCH=$arch
 
             echo "==> Building Linux $arch..."
-            go build -tags "v3 gtk3" -trimpath -ldflags="-s -w" -o build/bin/$APP_NAME .
+            go build -tags gtk3 -trimpath -ldflags="-s -w" -o build/bin/$APP_NAME .
 
             cd build/bin
             zip $APP_NAME-linux-$arch.zip $APP_NAME

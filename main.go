@@ -1,5 +1,3 @@
-//go:build !v3
-
 package main
 
 import (
@@ -7,19 +5,16 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
-	"guiforcores/bridge"
+	"log"
+	"log/slog"
+	"reflect"
 	"time"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/logger"
-	"github.com/wailsapp/wails/v2/pkg/menu"
-	"github.com/wailsapp/wails/v2/pkg/menu/keys"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/linux"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"guiforcores/bridge"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
 //go:embed all:frontend/dist
@@ -31,20 +26,13 @@ var icon []byte
 //go:embed build/appicon.png
 var appIcon []byte
 
+// main is the Wails v3 entry point. On Linux build with -tags gtk3; it is kept
+// beside main.go (which carries !v3) so both toolkits can be built from the
+// same tree while the migration is in progress.
 func main() {
 	app := bridge.CreateApp(assets)
-
-	bridge.SetHost(bridge.Host{
-		Emit: func(name string, data ...any) { runtime.EventsEmit(app.Ctx, name, data...) },
-		On: func(name string, handler func(data ...any)) {
-			runtime.EventsOn(app.Ctx, name, handler)
-		},
-		Off:            func(name string) { runtime.EventsOff(app.Ctx, name) },
-		WindowShow:     func() { runtime.WindowShow(app.Ctx) },
-		WindowHide:     func() { runtime.WindowHide(app.Ctx) },
-		WindowSetTitle: func(title string) { runtime.WindowSetTitle(app.Ctx, title) },
-		Quit:           func() { runtime.Quit(app.Ctx) },
-	})
+	// v2 supplied a context via OnStartup; bridge still uses it for HTTP timeouts.
+	app.Ctx = context.Background()
 
 	trayIcon := icon
 	if bridge.Env.OS == "linux" {
@@ -52,111 +40,162 @@ func main() {
 	}
 	trayStart, trayEnd := bridge.CreateTray(app, trayIcon)
 
-	appMenu := menu.NewMenu()
-	if bridge.Env.OS == "darwin" {
-		// macOS 需要显式菜单，否则 Cmd+C/Cmd+V 之类的编辑快捷键不生效。
-		appMenu = createMacOSMenus(app)
+	startState := application.WindowStateNormal
+	if bridge.Env.WindowStartState == bridge.WindowStartMinimised {
+		startState = application.WindowStateMinimised
 	}
 
-	// Create application with options
-	err := wails.Run(&options.App{
-		MinWidth:         600,
-		MinHeight:        400,
-		DisableResize:    false,
-		Menu:             appMenu,
-		Title:            bridge.Env.AppName,
-		Frameless:        bridge.Env.OS != "darwin" && !bridge.Config.SystemTitleBar,
-		Width:            bridge.Config.Width,
-		Height:           bridge.Config.Height,
-		StartHidden:      bridge.Env.WindowStartState == bridge.WindowStartMinimised,
-		WindowStartState: windowStartState(),
-		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 1},
-		Windows: &windows.Options{
-			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
-			ContentProtection:    bridge.Config.ContentProtection,
-			BackdropType:         windows.Acrylic,
-			WebviewBrowserPath:   bridge.Env.WebviewPath,
+	uniqueID := func() string {
+		if bridge.Config.MultipleInstance {
+			return time.Now().String()
+		}
+		sum := sha256.Sum256([]byte(bridge.Env.DataDir))
+		return bridge.Env.AppId + "-" + hex.EncodeToString(sum[:8])
+	}()
+
+	var window *application.WebviewWindow
+	var v3app *application.App
+	notifier := notifications.New()
+
+	v3app = application.New(application.Options{
+		Name:        bridge.Env.AppName,
+		Description: "GUI.for.Cores",
+		Icon:        appIcon,
+		Services: []application.Service{
+			application.NewService(app),
+			application.NewService(notifier),
 		},
-		Mac: &mac.Options{
-			TitleBar:             mac.TitleBarHiddenInset(),
-			Appearance:           mac.DefaultAppearance,
-			ContentProtection:    bridge.Config.ContentProtection,
-			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
-			About: &mac.AboutInfo{
-				Title:   bridge.Env.AppName,
-				Message: "© 2026 GUI.for.Cores",
-				Icon:    icon,
-			},
-		},
-		Linux: &linux.Options{
-			Icon:                appIcon,
-			WindowIsTranslucent: false,
-			ProgramName:         bridge.Env.AppName,
-			WebviewGpuPolicy:    linux.WebviewGpuPolicy(bridge.Config.WebviewGpuPolicy),
-		},
-		AssetServer: &assetserver.Options{
-			Assets:     assets,
+		Assets: application.AssetOptions{
+			Handler:    application.AssetFileServerFS(assets),
 			Middleware: bridge.RollingRelease,
 		},
-		SingleInstanceLock: &options.SingleInstanceLock{
-			UniqueId: func() string {
-				if bridge.Config.MultipleInstance {
-					return time.Now().String()
-				}
-				sum := sha256.Sum256([]byte(bridge.Env.DataDir))
-				return bridge.Env.AppId + "-" + hex.EncodeToString(sum[:8])
-			}(),
-			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
-				runtime.Show(app.Ctx)
-				runtime.EventsEmit(app.Ctx, "onLaunchApp", data.Args)
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: uniqueID,
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				window.Show()
+				// v2 delivered args as one array argument; wrapping keeps the
+				// frontend shim's "spread ev.data" rule compatible.
+				v3app.Event.EmitEvent(&application.CustomEvent{Name: "onLaunchApp", Data: []any{data.Args}})
 			},
 		},
-		OnStartup: func(ctx context.Context) {
-			app.Ctx = ctx
-			runtime.InitializeNotifications(ctx)
-			trayStart()
-		},
-		OnBeforeClose: func(ctx context.Context) (prevent bool) {
+		ShouldQuit: func() bool {
 			if !bridge.Env.PreventExit {
-				trayEnd()
-				runtime.CleanupNotifications(ctx)
-				return false
+				return true
 			}
-			runtime.EventsEmit(ctx, "onBeforeExitApp")
-			return true
+			v3app.Event.Emit("onBeforeExitApp")
+			return false
 		},
-		Bind: []any{
-			app,
+		OnShutdown: func() {
+			trayEnd()
 		},
-		LogLevel: logger.INFO,
-		Debug: options.Debug{
-			OpenInspectorOnStartup: true,
+		LogLevel: slog.LevelInfo,
+	})
+
+	window = v3app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:                    bridge.Env.AppName,
+		URL:                      "/",
+		Width:                    max(bridge.Config.Width, 1024),
+		Height:                   max(bridge.Config.Height, 768),
+		MinWidth:                 600,
+		MinHeight:                400,
+		Frameless:                bridge.Env.OS != "darwin" && !bridge.Config.SystemTitleBar,
+		StartState:               startState,
+		BackgroundColour:         application.NewRGB(255, 255, 255),
+		BackgroundType:           backgroundType(),
+		ContentProtectionEnabled: bridge.Config.ContentProtection,
+		DevToolsEnabled:          true,
+		Windows: application.WindowsWindow{
+			BackdropType: application.Acrylic,
+		},
+		Mac: application.MacWindow{
+			TitleBar:   application.MacTitleBarHiddenInset,
+			Appearance: application.DefaultAppearance,
+			Backdrop:   application.MacBackdropTranslucent,
+		},
+		Linux: application.LinuxWindow{
+			Icon:             appIcon,
+			WebviewGpuPolicy: application.WebviewGpuPolicy(bridge.Config.WebviewGpuPolicy),
 		},
 	})
 
-	if err != nil {
-		println("Error:", err.Error())
+	bridge.SetHost(bridge.Host{
+		Emit: emitV3(v3app),
+		On: func(name string, handler func(data ...any)) {
+			v3app.Event.On(name, func(e *application.CustomEvent) { handler(toArgs(e.Data)...) })
+		},
+		Off:            v3app.Event.Off,
+		WindowShow:     func() { window.Show() },
+		WindowHide:     func() { window.Hide() },
+		WindowSetTitle: func(title string) { window.SetTitle(title) },
+		Quit:           v3app.Quit,
+	})
+
+	v3app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		if bridge.Env.OS == "darwin" {
+			v3app.Menu.SetApplicationMenu(createMacOSMenus(window, v3app))
+		}
+		trayStart()
+	})
+
+	if err := v3app.Run(); err != nil {
+		log.Fatal(err)
 	}
 }
 
-func windowStartState() options.WindowStartState {
-	if bridge.Env.WindowStartState == bridge.WindowStartMinimised {
-		return options.Minimised
-	}
-	return options.Normal
-}
-
-func createMacOSMenus(app *bridge.App) *menu.Menu {
-	appMenu := menu.NewMenu()
+// macOS 需要显式菜单，否则 Cmd+C/Cmd+V 之类的编辑快捷键不生效。
+func createMacOSMenus(win *application.WebviewWindow, app *application.App) *application.Menu {
+	appMenu := application.NewMenu()
 	appSub := appMenu.AddSubmenu("App")
-	appSub.AddText("Show", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) { runtime.WindowShow(app.Ctx) })
-	appSub.AddText("Hide", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) { runtime.WindowHide(app.Ctx) })
+	appSub.Add("Show").SetAccelerator("cmdorctrl+s").OnClick(func(*application.Context) { win.Show() })
+	appSub.Add("Hide").SetAccelerator("cmdorctrl+h").OnClick(func(*application.Context) { win.Hide() })
 	appSub.AddSeparator()
-	appSub.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
-		runtime.EventsEmit(app.Ctx, "onExitApp")
+	appSub.Add("Quit").SetAccelerator("cmdorctrl+q").OnClick(func(*application.Context) {
+		app.Event.Emit("onExitApp")
 	})
-	appMenu.Append(menu.EditMenu())
+	appMenu.AddRole(application.EditMenu)
 	return appMenu
+}
+
+// v2 kept Linux windows opaque and made the Windows/macOS ones translucent.
+func backgroundType() application.BackgroundType {
+	if bridge.Env.OS == "linux" {
+		return application.BackgroundTypeSolid
+	}
+	return application.BackgroundTypeTranslucent
+}
+
+// emitV3 adapts bridge's variadic payloads to v3 event data. v3 keeps the
+// payload as-is when there is exactly one argument, so a lone slice has to be
+// wrapped in a slice to stay distinguishable from a multi-argument event on
+// the frontend side.
+func emitV3(app *application.App) func(string, ...any) {
+	return func(name string, data ...any) {
+		app.Event.Emit(name, normalizePayload(data)...)
+	}
+}
+
+func normalizePayload(data []any) []any {
+	if len(data) == 1 && isSlice(data[0]) {
+		return []any{data[0]}
+	}
+	return data
+}
+
+func isSlice(v any) bool {
+	if v == nil {
+		return false
+	}
+	k := reflect.TypeOf(v).Kind()
+	return k == reflect.Slice || k == reflect.Array
+}
+
+// toArgs turns v3's single data field back into v2's variadic arguments.
+func toArgs(data any) []any {
+	if data == nil {
+		return nil
+	}
+	if args, ok := data.([]any); ok {
+		return args
+	}
+	return []any{data}
 }
