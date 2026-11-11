@@ -41,6 +41,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.15
         version: 6.43.15
+      '@wailsio/runtime':
+        specifier: 3.1.0
+        version: 3.1.0
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
@@ -859,6 +862,9 @@ packages:
         optional: true
       vue:
         optional: true
+
+  '@wailsio/runtime@3.1.0':
+    resolution: {integrity: sha512-noEAedvRyO8TLCrqhGwzrp+mbMxAIDa2rYmdJQOzvJV9MxgaZeXAJGNBiMiKMTSSy4ESOtQi4VH/5heSzi6ZmA==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -2468,6 +2474,8 @@ snapshots:
     optionalDependencies:
       typescript: 6.0.3
       vue: 3.5.44(typescript@6.0.3)
+
+  '@wailsio/runtime@3.1.0': {}
 
   acorn-jsx@5.3.2(acorn@8.19.0):
     dependencies:

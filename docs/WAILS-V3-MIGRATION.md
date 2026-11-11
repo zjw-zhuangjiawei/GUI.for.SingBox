@@ -27,7 +27,7 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
 `wails generate bindings` 生成的绑定调用、`app.Event.Emit` → 前端 `Events.On` 事件往返，
 端到端可用。
 
-### 第 2 步：`bridge` 与 GUI 工具包解耦（当前）
+### 第 2 步：`bridge` 与 GUI 工具包解耦（提交 a83e9e5）
 
 - 新增 `bridge/host.go`：`bridge.Host` 结构体 + `SetHost()`，把 bridge 需要的工具包能力收敛成
   7 个回调（`Emit` / `On` / `Off` / `WindowShow` / `WindowHide` / `WindowSetTitle` / `Quit`）。
@@ -47,6 +47,28 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
 - 托盘仍用 `energye/systray`（只依赖 Host 的两个回调，无需改），`ApplicationStarted` 事件里启动，
   `OnShutdown` 里 `trayEnd()`。
 - 验证：v2 构建通过（6.6s）；v3 构建通过；v3 起窗口、资产正常服务；`bridge` 单测 + 主包单测通过。
+
+### 第 3 步：前端 v2 runtime shim
+
+前端只动 `frontend/src/bridge/wailsjs/` 这一个目录，`src/bridge/*.ts` 和视图里 88 处调用一行没改：
+
+- `runtime/runtime.js` 用 `@wailsio/runtime`（npm，3.1.0）实现 v2 的 runtime 同名函数，
+  只实现实际用到的 24 个。`EventsOn(name, cb)` 把 v3 的单个事件对象展开成 v2 的可变参；
+  `WindowGetSize` 把 `{width,height}` 映射回 `{w,h}`；`ClipboardSetText` 保留成功布尔返回。
+- `runtime/runtime.d.ts` 只声明上面这些函数，未实现的 v2 API 不再声明——上游新增用法会在
+  `pnpm type-check` 阶段报错，而不是运行时静默失效。
+- `go/bridge/App.js` 改为 `export * from '../../guiforcores/bridge/app.js'`，保留
+  `@wails/go/bridge/App` 这个 import 路径；删除 v2 生成的 `App.d.ts` 和 `go/models.ts`。
+- 生成绑定：`wails generate bindings -f "-tags v3,gtk3" -clean=false -d frontend/src/bridge/wailsjs .`
+  （**不要加 `-b`**，加了会 import `/wails/runtime.js`，vite 解析不到）。
+  生成器输出 JSDoc 类型的 `.js` 而不是 `.d.ts`，所以 `tsconfig.app.json` 需要 `allowJs: true`。
+- `frontend/index.html` 的 IPC 检测从 `window.WailsInvoke` 改成 `window._wails`。
+- 通知：`@wailsio/runtime` 没有通知 API，三个函数用 Web Notification API 实现。
+- 主题：`WindowSetSystemDefaultTheme` 在 v3 没有对应物，暂时是空函数（第 5 步换成
+  `common:ThemeChanged` + CSS）。
+- 验证：`pnpm type-check` 0 错误、`pnpm build-only` 通过；v3 二进制启动后日志出现
+  `GetEnv`、`ReadFile data/*.yaml`、`GetSystemProxyBypass`、`UpdateTrayAndMenus`，
+  说明 Vue 界面在 v3 下完整跑起来，绑定与事件都通。
 
 ## v2 → v3 对照
 
@@ -68,21 +90,15 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
 | `-tags webkit2_41` | `-tags gtk3` / `gtk4` |
 | `wails.json` | `Taskfile.yml` + `build/config.yml`（未做） |
 
-## 还没做（第 3-6 步）
+## 还没做（第 4-6 步）
 
-1. **前端 bridge shim**（下一个阻塞点）：`frontend/src/bridge/index.ts` 现在 re-export
-   `@wails/runtime/runtime`，需要改成基于 `/wails/runtime.js` 的同名实现
-   （`EventsOn(name, cb)` → `Events.On(name, ev => cb(...args))`、`Window*`、`Clipboard*`、
-   `Browser*` 等），视图里 88 处调用不动。
-   `frontend/index.html` 的 `if (!window.WailsInvoke)` 检测也要换（v3 没有 `WailsInvoke`），
-   否则会显示 WebView2 错误页——**这正是当前 v3 启动后看到那个白底错误页的原因**。
-2. v3 主题 API 缺失：`WindowSetSystemDefaultTheme` / `SetLightTheme` / `SetDarkTheme`
-   在 v3 JS runtime 里没有，需要改成 `common:ThemeChanged` 事件 + CSS。
-3. 原生托盘/菜单：`app.SystemTray`、`application.Menu` 替换 `energye/systray` 和 `macOS` 菜单。
-4. 通知：`pkg/services/notifications`。
-5. 构建与 CI：`Taskfile.yml`、`build/config.yml`，`.github/workflows/release.yml` 三处 `wails build`。
-6. `bridge/bridge.go` 里 `createMacOSMenus` 仍用 v2 的 `menu`/`keys` 包——只在 darwin 生效，
+1. **主题**：`WindowSetSystemDefaultTheme` 目前是空函数，换成 `common:ThemeChanged` 事件 + CSS。
+2. 原生托盘/菜单：`app.SystemTray`、`application.Menu` 替换 `energye/systray` 和 macOS 菜单。
+3. 通知：`pkg/services/notifications`（现在走 Web Notification API，够用但不在 Go 侧可控）。
+4. 构建与 CI：`Taskfile.yml`、`build/config.yml`，`.github/workflows/release.yml` 三处 `wails build`。
+5. `bridge/bridge.go` 里 `createMacOSMenus` 仍用 v2 的 `menu`/`keys` 包——只在 darwin 生效，
    v3 构建里是死代码，第 5 步一起换掉。
+6. 前端 Windows/macOS 相关行为（透明窗口、Mica/Acrylic）需要上机验证。
 
 ## 已知坑
 
@@ -90,3 +106,10 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
 - v3 进程对 SIGTERM 不退出（`PreventExit` 默认 true，`ShouldQuit` 返回 false），
   手动测试要 `kill -9`。这与 v2「关窗即隐藏到托盘」的行为一致，不是新 bug。
 - `frontend/dist` 是 `go:embed` 进来的，v3 构建前要先 `pnpm build-only`（与 v2 相同）。
+- **这个分支上不要再跑 `~/go/bin/wails build`**：v2 CLI 会用 v2 的 Go 代码重新生成
+  `frontend/src/bridge/wailsjs/`（`runtime/*`、`go/bridge/App.js`、`go/models.ts`），
+  把 v3 的前端 shim 覆盖掉，前端随即 type-check 失败。v3 的构建路径是
+  `pnpm build-only` + `go build -tags "v3 gtk3"`。
+- 本分支的前端只服务 v3（`window._wails` 检测）。若要用 v2 编译验证 Go 侧，UI 会显示
+  「WebView2 未安装」兜底页，属预期。
+- 会话锁屏时截图拿不到窗口内容（KWin 不渲染 webview 表面），只能看到白底；验证 UI 要看日志或解锁后看屏幕。

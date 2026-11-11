@@ -95,14 +95,14 @@ func main() {
 	window = v3app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:                    bridge.Env.AppName,
 		URL:                      "/",
-		Width:                    bridge.Config.Width,
-		Height:                   bridge.Config.Height,
+		Width:                    max(bridge.Config.Width, 1024),
+		Height:                   max(bridge.Config.Height, 768),
 		MinWidth:                 600,
 		MinHeight:                400,
 		Frameless:                bridge.Env.OS != "darwin" && !bridge.Config.SystemTitleBar,
 		StartState:               startState,
 		BackgroundColour:         application.NewRGB(255, 255, 255),
-		BackgroundType:           application.BackgroundTypeTranslucent,
+		BackgroundType:           backgroundType(),
 		ContentProtectionEnabled: bridge.Config.ContentProtection,
 		DevToolsEnabled:          true,
 		Windows: application.WindowsWindow{
@@ -138,6 +138,14 @@ func main() {
 	if err := v3app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// v2 kept Linux windows opaque and made the Windows/macOS ones translucent.
+func backgroundType() application.BackgroundType {
+	if bridge.Env.OS == "linux" {
+		return application.BackgroundTypeSolid
+	}
+	return application.BackgroundTypeTranslucent
 }
 
 // emitV3 adapts bridge's variadic payloads to v3 event data. v3 keeps the

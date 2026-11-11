@@ -1,298 +1,101 @@
-/*
- _       __      _ __
-| |     / /___ _(_) /____
-| | /| / / __ `/ / / ___/
-| |/ |/ / /_/ / / (__  )
-|__/|__/\__,_/_/_/____/
-The electron alternative for Go
-(c) Lea Anthony 2019-present
-*/
-
-export function LogPrint(message) {
-    window.runtime.LogPrint(message);
-}
-
-export function LogTrace(message) {
-    window.runtime.LogTrace(message);
-}
-
-export function LogDebug(message) {
-    window.runtime.LogDebug(message);
-}
-
-export function LogInfo(message) {
-    window.runtime.LogInfo(message);
-}
-
-export function LogWarning(message) {
-    window.runtime.LogWarning(message);
-}
-
-export function LogError(message) {
-    window.runtime.LogError(message);
-}
-
-export function LogFatal(message) {
-    window.runtime.LogFatal(message);
-}
-
-export function EventsOnMultiple(eventName, callback, maxCallbacks) {
-    return window.runtime.EventsOnMultiple(eventName, callback, maxCallbacks);
-}
-
-export function EventsOn(eventName, callback) {
-    return EventsOnMultiple(eventName, callback, -1);
-}
-
-export function EventsOff(eventName, ...additionalEventNames) {
-    return window.runtime.EventsOff(eventName, ...additionalEventNames);
-}
-
-export function EventsOffAll() {
-  return window.runtime.EventsOffAll();
-}
-
-export function EventsOnce(eventName, callback) {
-    return EventsOnMultiple(eventName, callback, 1);
-}
-
-export function EventsEmit(eventName) {
-    let args = [eventName].slice.call(arguments);
-    return window.runtime.EventsEmit.apply(null, args);
-}
-
-export function WindowReload() {
-    window.runtime.WindowReload();
-}
-
-export function WindowReloadApp() {
-    window.runtime.WindowReloadApp();
-}
-
-export function WindowSetAlwaysOnTop(b) {
-    window.runtime.WindowSetAlwaysOnTop(b);
-}
-
-export function WindowSetSystemDefaultTheme() {
-    window.runtime.WindowSetSystemDefaultTheme();
-}
-
-export function WindowSetLightTheme() {
-    window.runtime.WindowSetLightTheme();
-}
-
-export function WindowSetDarkTheme() {
-    window.runtime.WindowSetDarkTheme();
-}
-
-export function WindowCenter() {
-    window.runtime.WindowCenter();
-}
-
-export function WindowSetTitle(title) {
-    window.runtime.WindowSetTitle(title);
-}
-
-export function WindowFullscreen() {
-    window.runtime.WindowFullscreen();
-}
-
-export function WindowUnfullscreen() {
-    window.runtime.WindowUnfullscreen();
-}
-
-export function WindowIsFullscreen() {
-    return window.runtime.WindowIsFullscreen();
-}
+// Wails v2 runtime API re-implemented on top of the Wails v3 runtime.
+// The app's bridge modules and views import these names, so keeping the same
+// surface keeps every existing call site untouched.
+//
+// `wails build` (v2) regenerates this directory and would overwrite this file;
+// on the wails-v3 branch build the frontend with `pnpm build-only` instead.
+import { Browser, Clipboard, Events, Window } from '@wailsio/runtime'
 
-export function WindowGetSize() {
-    return window.runtime.WindowGetSize();
+// v3 delivers a single event object: its payload is the bare value when Go sent
+// one argument, or the argument slice when it sent several.
+const toArgs = (event) => {
+  const data = event?.data
+  if (data === undefined || data === null) return []
+  return Array.isArray(data) ? data : [data]
 }
 
-export function WindowSetSize(width, height) {
-    window.runtime.WindowSetSize(width, height);
-}
-
-export function WindowSetMaxSize(width, height) {
-    window.runtime.WindowSetMaxSize(width, height);
-}
-
-export function WindowSetMinSize(width, height) {
-    window.runtime.WindowSetMinSize(width, height);
-}
-
-export function WindowSetPosition(x, y) {
-    window.runtime.WindowSetPosition(x, y);
-}
-
-export function WindowGetPosition() {
-    return window.runtime.WindowGetPosition();
-}
-
-export function WindowHide() {
-    window.runtime.WindowHide();
-}
-
-export function WindowShow() {
-    window.runtime.WindowShow();
-}
-
-export function WindowMaximise() {
-    window.runtime.WindowMaximise();
-}
-
-export function WindowToggleMaximise() {
-    window.runtime.WindowToggleMaximise();
-}
-
-export function WindowUnmaximise() {
-    window.runtime.WindowUnmaximise();
-}
-
-export function WindowIsMaximised() {
-    return window.runtime.WindowIsMaximised();
-}
-
-export function WindowMinimise() {
-    window.runtime.WindowMinimise();
-}
+export const EventsOn = (name, callback) => Events.On(name, (event) => callback(...toArgs(event)))
 
-export function WindowUnminimise() {
-    window.runtime.WindowUnminimise();
-}
-
-export function WindowSetBackgroundColour(R, G, B, A) {
-    window.runtime.WindowSetBackgroundColour(R, G, B, A);
-}
-
-export function ScreenGetAll() {
-    return window.runtime.ScreenGetAll();
-}
-
-export function WindowIsMinimised() {
-    return window.runtime.WindowIsMinimised();
-}
-
-export function WindowIsNormal() {
-    return window.runtime.WindowIsNormal();
-}
-
-export function BrowserOpenURL(url) {
-    window.runtime.BrowserOpenURL(url);
-}
-
-export function Environment() {
-    return window.runtime.Environment();
-}
-
-export function Quit() {
-    window.runtime.Quit();
-}
+export const EventsOff = (...names) => Events.Off(...names)
 
-export function Hide() {
-    window.runtime.Hide();
+export const EventsEmit = (name, ...data) => {
+  Events.Emit(name, data.length > 1 ? data : data[0])
 }
 
-export function Show() {
-    window.runtime.Show();
+export const BrowserOpenURL = (url) => {
+  Browser.OpenURL(url)
 }
 
-export function ClipboardGetText() {
-    return window.runtime.ClipboardGetText();
-}
-
-export function ClipboardSetText(text) {
-    return window.runtime.ClipboardSetText(text);
-}
+export const ClipboardGetText = () => Clipboard.Text()
 
-/**
- * Callback for OnFileDrop returns a slice of file path strings when a drop is finished.
- *
- * @export
- * @callback OnFileDropCallback
- * @param {number} x - x coordinate of the drop
- * @param {number} y - y coordinate of the drop
- * @param {string[]} paths - A list of file paths.
- */
-
-/**
- * OnFileDrop listens to drag and drop events and calls the callback with the coordinates of the drop and an array of path strings.
- *
- * @export
- * @param {OnFileDropCallback} callback - Callback for OnFileDrop returns a slice of file path strings when a drop is finished.
- * @param {boolean} [useDropTarget=true] - Only call the callback when the drop finished on an element that has the drop target style. (--wails-drop-target)
- */
-export function OnFileDrop(callback, useDropTarget) {
-    return window.runtime.OnFileDrop(callback, useDropTarget);
+export const ClipboardSetText = async (text) => {
+  try {
+    await Clipboard.SetText(text)
+    return true
+  } catch {
+    return false
+  }
 }
 
-/**
- * OnFileDropOff removes the drag and drop listeners and handlers.
- */
-export function OnFileDropOff() {
-    return window.runtime.OnFileDropOff();
+export const Show = () => {
+  Window.Show()
 }
 
-export function CanResolveFilePaths() {
-    return window.runtime.CanResolveFilePaths();
+export const WindowHide = () => {
+  Window.Hide()
 }
 
-export function ResolveFilePaths(files) {
-    return window.runtime.ResolveFilePaths(files);
+export const WindowMinimise = () => {
+  Window.Minimise()
 }
 
-export function InitializeNotifications() {
-    return window.runtime.InitializeNotifications();
+export const WindowToggleMaximise = () => {
+  Window.ToggleMaximise()
 }
 
-export function CleanupNotifications() {
-    return window.runtime.CleanupNotifications();
-}
+export const WindowIsMaximised = () => Window.IsMaximised()
 
-export function IsNotificationAvailable() {
-    return window.runtime.IsNotificationAvailable();
-}
+export const WindowIsMinimised = () => Window.IsMinimised()
 
-export function RequestNotificationAuthorization() {
-    return window.runtime.RequestNotificationAuthorization();
-}
+export const WindowIsFullscreen = () => Window.IsFullscreen()
 
-export function CheckNotificationAuthorization() {
-    return window.runtime.CheckNotificationAuthorization();
+export const WindowSetSize = (width, height) => {
+  Window.SetSize(width, height)
 }
 
-export function SendNotification(options) {
-    return window.runtime.SendNotification(options);
+export const WindowGetSize = async () => {
+  const { width, height } = await Window.Size()
+  return { w: width, h: height }
 }
 
-export function SendNotificationWithActions(options) {
-    return window.runtime.SendNotificationWithActions(options);
+export const WindowSetPosition = (x, y) => {
+  Window.SetPosition(x, y)
 }
 
-export function RegisterNotificationCategory(category) {
-    return window.runtime.RegisterNotificationCategory(category);
-}
+export const WindowGetPosition = () => Window.Position()
 
-export function RemoveNotificationCategory(categoryId) {
-    return window.runtime.RemoveNotificationCategory(categoryId);
+export const WindowSetAlwaysOnTop = (alwaysOnTop) => {
+  Window.SetAlwaysOnTop(alwaysOnTop)
 }
 
-export function RemoveAllPendingNotifications() {
-    return window.runtime.RemoveAllPendingNotifications();
+export const WindowReloadApp = () => {
+  Window.Reload()
 }
 
-export function RemovePendingNotification(identifier) {
-    return window.runtime.RemovePendingNotification(identifier);
-}
+// v3 dropped the v2 theme setters; the theme is driven by CSS and the
+// common:ThemeChanged event, so this is intentionally a no-op.
+export const WindowSetSystemDefaultTheme = () => {}
 
-export function RemoveAllDeliveredNotifications() {
-    return window.runtime.RemoveAllDeliveredNotifications();
-}
+// v3's JS runtime has no notification API, so use the Web Notifications API,
+// which the platform webviews surface as native notifications.
+export const IsNotificationAvailable = async () => typeof Notification !== 'undefined'
 
-export function RemoveDeliveredNotification(identifier) {
-    return window.runtime.RemoveDeliveredNotification(identifier);
+export const RequestNotificationAuthorization = async () => {
+  if (typeof Notification === 'undefined') return false
+  if (Notification.permission === 'granted') return true
+  return (await Notification.requestPermission()) === 'granted'
 }
 
-export function RemoveNotification(identifier) {
-    return window.runtime.RemoveNotification(identifier);
+export const SendNotification = async (options) => {
+  new Notification(options.title, { body: options.body })
 }

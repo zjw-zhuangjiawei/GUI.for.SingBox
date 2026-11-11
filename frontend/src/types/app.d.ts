@@ -26,9 +26,9 @@ declare namespace App {
   }
 
   interface TrayContent {
-    icon?: string
-    title?: string
-    tooltip?: string
+    icon: string
+    title: string
+    tooltip: string
   }
 
   interface Menu {

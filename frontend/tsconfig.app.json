@@ -6,6 +6,9 @@
     // Extra safety for array and object lookups, but may have false positives.
     "noUncheckedIndexedAccess": true,
 
+    // The v3 binding generator emits JSDoc-typed .js, not .d.ts.
+    "allowJs": true,
+
     "lib": ["ESNext", "DOM"],
 
     "paths": {

@@ -78,10 +78,12 @@ const mergeRequestOptions = async (options: Request['options']) => {
 }
 
 const transformResponseHeaders = (
-  headers: Record<string, string | string[]>,
+  headers: Record<string, string | string[] | undefined>,
 ): Response['headers'] => {
   return Object.fromEntries(
-    Object.entries(headers).map(([key, value]) => [key, value.length > 1 ? value : value[0]!]),
+    Object.entries(headers).flatMap(([key, value]) =>
+      value === undefined ? [] : [[key, value.length > 1 ? value : value[0]!]],
+    ),
   )
 }
 
@@ -115,7 +117,7 @@ const transformRequest = async (
 
 const transformResponse = <T = any>(
   status: Response['status'],
-  headers: Record<string, string[]>,
+  headers: Record<string, string[] | undefined>,
   body: Response['body'],
 ) => {
   const transformedHeaders = transformResponseHeaders(headers)

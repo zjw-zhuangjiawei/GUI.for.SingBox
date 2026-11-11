@@ -29,7 +29,8 @@
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
     <script>
-      if (!window.WailsInvoke) {
+      // v2 injected window.WailsInvoke; v3 injects window._wails.
+      if (!window._wails) {
         document.getElementById('ipc-error').style.display = 'block'
         document.getElementById('app').style.display = 'none'
       }
