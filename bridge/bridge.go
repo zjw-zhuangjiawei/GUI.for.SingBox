@@ -15,9 +15,6 @@ import (
 
 	sysruntime "runtime"
 
-	"github.com/wailsapp/wails/v2/pkg/menu"
-	"github.com/wailsapp/wails/v2/pkg/menu/keys"
-	"github.com/wailsapp/wails/v2/pkg/options"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,9 +36,7 @@ var Env = &EnvResult{
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{
-		AppMenu: menu.NewMenu(),
-	}
+	return &App{}
 }
 
 func CreateApp(fs embed.FS) *App {
@@ -62,10 +57,6 @@ func CreateApp(fs embed.FS) *App {
 	}
 
 	app := NewApp()
-
-	if Env.OS == "darwin" {
-		createMacOSMenus(app)
-	}
 
 	if Env.OS == "windows" {
 		processFixedWebView2Runtime()
@@ -185,13 +176,13 @@ func parseArgs(args []string) (dataDir string, portable bool, restartFrom int) {
 	fs.StringVar(&dataDir, "data-dir", "", "data directory")
 	fs.BoolVar(&portable, "portable", false, "keep data next to the app")
 	fs.IntVar(&restartFrom, "restart-from", 0, "pid of the instance to wait for")
-	Env.WindowStartState = options.Normal
+	Env.WindowStartState = WindowStartNormal
 	fs.Func("window-start-state", "normal or minimised", func(v string) error {
 		switch strings.ToLower(v) {
 		case "normal":
-			Env.WindowStartState = options.Normal
+			Env.WindowStartState = WindowStartNormal
 		case "minimised":
-			Env.WindowStartState = options.Minimised
+			Env.WindowStartState = WindowStartMinimised
 		default:
 			log.Printf("Ignoring unknown --window-start-state %q", v)
 		}
@@ -234,23 +225,6 @@ func defaultDataDir() (string, error) {
 		configDir, err := os.UserConfigDir()
 		return filepath.Join(configDir, Env.AppId), err
 	}
-}
-
-func createMacOSMenus(app *App) {
-	appMenu := app.AppMenu.AddSubmenu("App")
-	appMenu.AddText("Show", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
-		windowShow()
-	})
-	appMenu.AddText("Hide", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
-		windowHide()
-	})
-	appMenu.AddSeparator()
-	appMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
-		emit("onExitApp")
-	})
-
-	// on macos platform, we should append EditMenu to enable Cmd+C,Cmd+V,Cmd+Z... shortcut
-	app.AppMenu.Append(menu.EditMenu())
 }
 
 func processFixedWebView2Runtime() {

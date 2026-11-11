@@ -17,8 +17,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
-
-	v2options "github.com/wailsapp/wails/v2/pkg/options"
 )
 
 //go:embed all:frontend/dist
@@ -45,7 +43,7 @@ func main() {
 	trayStart, trayEnd := bridge.CreateTray(app, trayIcon)
 
 	startState := application.WindowStateNormal
-	if bridge.Env.WindowStartState == v2options.Minimised {
+	if bridge.Env.WindowStartState == bridge.WindowStartMinimised {
 		startState = application.WindowStateMinimised
 	}
 
@@ -135,12 +133,29 @@ func main() {
 	})
 
 	v3app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		if bridge.Env.OS == "darwin" {
+			v3app.Menu.SetApplicationMenu(createMacOSMenus(window, v3app))
+		}
 		trayStart()
 	})
 
 	if err := v3app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// macOS 需要显式菜单，否则 Cmd+C/Cmd+V 之类的编辑快捷键不生效。
+func createMacOSMenus(win *application.WebviewWindow, app *application.App) *application.Menu {
+	appMenu := application.NewMenu()
+	appSub := appMenu.AddSubmenu("App")
+	appSub.Add("Show").SetAccelerator("cmdorctrl+s").OnClick(func(*application.Context) { win.Show() })
+	appSub.Add("Hide").SetAccelerator("cmdorctrl+h").OnClick(func(*application.Context) { win.Hide() })
+	appSub.AddSeparator()
+	appSub.Add("Quit").SetAccelerator("cmdorctrl+q").OnClick(func(*application.Context) {
+		app.Event.Emit("onExitApp")
+	})
+	appMenu.AddRole(application.EditMenu)
+	return appMenu
 }
 
 // v2 kept Linux windows opaque and made the Windows/macOS ones translucent.

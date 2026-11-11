@@ -12,6 +12,8 @@ import (
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
+	"github.com/wailsapp/wails/v2/pkg/menu"
+	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
@@ -50,18 +52,24 @@ func main() {
 	}
 	trayStart, trayEnd := bridge.CreateTray(app, trayIcon)
 
+	appMenu := menu.NewMenu()
+	if bridge.Env.OS == "darwin" {
+		// macOS 需要显式菜单，否则 Cmd+C/Cmd+V 之类的编辑快捷键不生效。
+		appMenu = createMacOSMenus(app)
+	}
+
 	// Create application with options
 	err := wails.Run(&options.App{
 		MinWidth:         600,
 		MinHeight:        400,
 		DisableResize:    false,
-		Menu:             app.AppMenu,
+		Menu:             appMenu,
 		Title:            bridge.Env.AppName,
 		Frameless:        bridge.Env.OS != "darwin" && !bridge.Config.SystemTitleBar,
 		Width:            bridge.Config.Width,
 		Height:           bridge.Config.Height,
-		StartHidden:      bridge.Env.WindowStartState == options.Minimised,
-		WindowStartState: bridge.Env.WindowStartState,
+		StartHidden:      bridge.Env.WindowStartState == bridge.WindowStartMinimised,
+		WindowStartState: windowStartState(),
 		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 1},
 		Windows: &windows.Options{
 			WebviewIsTransparent: true,
@@ -131,4 +139,24 @@ func main() {
 	if err != nil {
 		println("Error:", err.Error())
 	}
+}
+
+func windowStartState() options.WindowStartState {
+	if bridge.Env.WindowStartState == bridge.WindowStartMinimised {
+		return options.Minimised
+	}
+	return options.Normal
+}
+
+func createMacOSMenus(app *bridge.App) *menu.Menu {
+	appMenu := menu.NewMenu()
+	appSub := appMenu.AddSubmenu("App")
+	appSub.AddText("Show", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) { runtime.WindowShow(app.Ctx) })
+	appSub.AddText("Hide", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) { runtime.WindowHide(app.Ctx) })
+	appSub.AddSeparator()
+	appSub.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+		runtime.EventsEmit(app.Ctx, "onExitApp")
+	})
+	appMenu.Append(menu.EditMenu())
+	return appMenu
 }

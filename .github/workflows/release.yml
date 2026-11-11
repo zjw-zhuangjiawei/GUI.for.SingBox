@@ -46,7 +46,6 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - uses: actions/download-artifact@v8
         with:
           name: frontend-dist
@@ -61,7 +60,7 @@ jobs:
             $env:GOARCH=$arch
 
             Write-Host "==> Building Windows $arch..."
-            ~/go/bin/wails build -m -s -trimpath -skipbindings -devtools -o "$env:APP_NAME.exe"
+            go build -tags v3 -trimpath -ldflags="-s -w -H windowsgui" -o "build/bin/$env:APP_NAME.exe" .
 
             cd build/bin
             $zipName = "$env:APP_NAME-windows-$arch.zip"
@@ -82,20 +81,17 @@ jobs:
     runs-on: macos-latest
     env:
       APP_NAME: GUI.for.SingBox
+      APP_VERSION: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           check-latest: true
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: frontend/dist
-      - run: |
-          go mod vendor
-          sed -i "" "s/\[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular\]/[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory]/g" vendor/github.com/wailsapp/wails/v2/internal/frontend/desktop/darwin/AppDelegate.m
 
       - name: Build & Pack macOS
         run: |
@@ -104,7 +100,12 @@ jobs:
             export GOOS=darwin GOARCH=$arch
 
             echo "==> Building macOS $arch..."
-            ~/go/bin/wails build -m -s -trimpath -skipbindings -devtools -o $APP_NAME.exe
+            app_dir=build/bin/$APP_NAME.app
+            rm -rf "$app_dir"
+            mkdir -p "$app_dir/Contents/MacOS"
+            sed -e "s/APP_NAME/$APP_NAME/g" -e "s/APP_VERSION/${APP_VERSION#v}/g" \
+              build/darwin/Info.static.plist > "$app_dir/Contents/Info.plist"
+            go build -tags v3 -trimpath -ldflags="-s -w" -o "$app_dir/Contents/MacOS/$APP_NAME" .
 
             cd build/bin
             zip -q -r $APP_NAME-darwin-$arch.zip $APP_NAME.app
@@ -137,7 +138,6 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - uses: actions/download-artifact@v8
         with:
           name: frontend-dist
@@ -153,10 +153,9 @@ jobs:
             export GOOS=linux GOARCH=$arch
 
             echo "==> Building Linux $arch..."
-            ~/go/bin/wails build -m -s -trimpath -skipbindings -devtools -tags webkit2_41 -o $APP_NAME.exe
+            go build -tags "v3 gtk3" -trimpath -ldflags="-s -w" -o build/bin/$APP_NAME .
 
             cd build/bin
-            mv $APP_NAME.exe $APP_NAME
             zip $APP_NAME-linux-$arch.zip $APP_NAME
             cd ../..
           }

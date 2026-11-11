@@ -86,6 +86,29 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
   v2 的 `WindowSetSystemDefaultTheme()` 只是通知原生控件跟随系统；v3 没有对应 API，
   shim 里的空函数就是正解，不需要 `common:ThemeChanged`。
 
+### 第 5 步：bridge 彻底不碰 v2，CI 换成 go build
+
+- `bridge/` 里最后两个 v2 类型清掉：`App.AppMenu *menu.Menu` 删掉，macOS 菜单改由各入口点自己建；
+  `Env.WindowStartState` 从 `options.WindowStartState` 改成 `bridge.WindowStartNormal/Minimised`
+  两个字符串常量，由 `main.go` / `main_v3.go` 各自映射。
+  现在 `grep -r wails/v2 bridge/` 为空——**bridge 包完全不依赖 GUI 工具包**。
+- macOS 菜单：`main.go` 用 v2 的 `menu`/`keys` 建（`createMacOSMenus(app)`），
+  `main_v3.go` 用 `application.NewMenu()` + `AddSubmenu` + `SetAccelerator("cmdorctrl+s")` +
+  `AddRole(application.EditMenu)` 建同构菜单，在 `ApplicationStarted` 里
+  `v3app.Menu.SetApplicationMenu(...)`。只在 `Env.OS == "darwin"` 时执行。
+- CI（`.github/workflows/release.yml`）：三个 job 的 `go install wails v2` 和 `wails build`
+  全部删掉，改成 `go build`：
+  - Windows：`go build -tags v3 -trimpath -ldflags="-s -w -H windowsgui" -o build/bin/APP.exe .`
+  - Linux：`go build -tags "v3 gtk3" -trimpath -ldflags="-s -w" -o build/bin/APP .`
+  - macOS：手动拼 `.app` 目录 + `build/darwin/Info.static.plist`（新增的静态 plist，
+    `APP_NAME` / `APP_VERSION` 由 CI sed 替换），然后 `go build -tags v3`。
+  - 顺手删掉 macOS job 里对 v2 `AppDelegate.m` 的 `go mod vendor` + sed 补丁。
+- **没有加 `Taskfile.yml` / `build/config.yml`**：v3 的 `go build` 已经够用，Taskfile 只是
+  `wails3` CLI 打包（`.icns`、`.syso`、安装包）才需要，等真要做安装包再加。
+- 本地能验证的：Windows 交叉编译通过（`GOOS=windows go build -tags v3`）、Linux 构建通过、
+  v3 二进制启动无回归。**macOS 那段 CI 没法在本地验证**（需要 macOS SDK 和 cgo），
+  首次真跑 release 时要盯着。
+
 ## v2 → v3 对照
 
 | v2 | v3 |
@@ -106,14 +129,14 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
 | `-tags webkit2_41` | `-tags gtk3` / `gtk4` |
 | `wails.json` | `Taskfile.yml` + `build/config.yml`（未做） |
 
-## 还没做（第 5-6 步）
+## 还没做（第 6 步：收尾）
 
-1. 构建与 CI：`Taskfile.yml`、`build/config.yml`，`.github/workflows/release.yml` 三处 `wails build`。
-2. `bridge/bridge.go` 里 `createMacOSMenus` 仍用 v2 的 `menu`/`keys` 包——只在 darwin 生效，
-   v3 构建里是死代码，第 5 步一起换掉。
-3. 最终清理：删掉 `wails/v2` 依赖、`main.go`、`bridge/host.go` 里 v2 那套映射。
-4. 前端 Windows/macOS 相关行为（透明窗口、Mica/Acrylic、`macOS` 隐藏标题栏）需要上机验证。
-5. 托盘菜单的点击行为、通知的点击回调只在 Linux 验证过。
+1. 删掉 `wails/v2` 依赖、`main.go`、`bridge/host.go` 里 v2 那套映射——**要等 v3 在三个平台都验过**，
+   否则这条分支就没有能跑的 v2 兜底了。
+2. 安装包：`.icns` / `.syso` / `.desktop` / winget 需要 `Taskfile.yml` + `wails3 package` 才有。
+3. 前端 Windows/macOS 行为（透明窗口、Mica/Acrylic、macOS 隐藏标题栏）需要上机验证。
+4. 托盘菜单点击、通知点击回调只在 Linux 验证过。
+5. macOS 的 `.app` 没有图标（`CFBundleIconFile` 从静态 plist 里去掉了，仓库里没有 `.icns`）。
 
 ## 已知坑
 

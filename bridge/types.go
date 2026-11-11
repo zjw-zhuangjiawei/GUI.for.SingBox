@@ -3,16 +3,18 @@ package bridge
 import (
 	"context"
 	"net/http"
-
-	"github.com/wailsapp/wails/v2/pkg/menu"
-	"github.com/wailsapp/wails/v2/pkg/options"
 )
 
 // App struct
 type App struct {
-	Ctx     context.Context
-	AppMenu *menu.Menu
+	Ctx context.Context
 }
+
+// Window start states, mapped to the toolkit's own constants by each entry point.
+const (
+	WindowStartNormal    = "normal"
+	WindowStartMinimised = "minimised"
+)
 
 type EnvResult struct {
 	IsStartup    bool   `json:"-"`
@@ -27,9 +29,9 @@ type EnvResult struct {
 	ARCH         string `json:"arch"`
 	IsPrivileged bool   `json:"isPrivileged"`
 
-	Args             []string                 `json:"args"`
-	LaunchArgs       []string                 `json:"launchArgs"`
-	WindowStartState options.WindowStartState `json:"-"`
+	Args             []string `json:"args"`
+	LaunchArgs       []string `json:"launchArgs"`
+	WindowStartState string   `json:"-"`
 }
 
 type RequestOptions struct {
