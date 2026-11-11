@@ -1,3 +1,5 @@
+//go:build !v3
+
 package main
 
 import (
@@ -29,6 +31,18 @@ var appIcon []byte
 
 func main() {
 	app := bridge.CreateApp(assets)
+
+	bridge.SetHost(bridge.Host{
+		Emit: func(name string, data ...any) { runtime.EventsEmit(app.Ctx, name, data...) },
+		On: func(name string, handler func(data ...any)) {
+			runtime.EventsOn(app.Ctx, name, handler)
+		},
+		Off:            func(name string) { runtime.EventsOff(app.Ctx, name) },
+		WindowShow:     func() { runtime.WindowShow(app.Ctx) },
+		WindowHide:     func() { runtime.WindowHide(app.Ctx) },
+		WindowSetTitle: func(title string) { runtime.WindowSetTitle(app.Ctx, title) },
+		Quit:           func() { runtime.Quit(app.Ctx) },
+	})
 
 	trayIcon := icon
 	if bridge.Env.OS == "linux" {

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v3/process"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) Exec(path string, args []string, options ExecOptions) FlagResult {
@@ -147,10 +146,10 @@ func (a *App) ExecBackground(path string, args []string, outEvent string, endEve
 		}
 		if endEvent != "" {
 			if err != nil {
-				runtime.EventsEmit(a.Ctx, endEvent, err.Error())
+				emit(endEvent, err.Error())
 				return
 			}
-			runtime.EventsEmit(a.Ctx, endEvent)
+			emit(endEvent)
 		}
 	}()
 
@@ -305,7 +304,7 @@ func scanAndEmitOutput(a *App, reader io.Reader, outEvent string, options ExecOp
 		text := DecodeCommandOutput(scanner.Bytes())
 
 		if !stopOutput {
-			runtime.EventsEmit(a.Ctx, outEvent, text)
+			emit(outEvent, text)
 
 			if options.StopOutputKeyword != "" && strings.Contains(text, options.StopOutputKeyword) {
 				stopOutput = true
@@ -332,7 +331,7 @@ func tailAndEmitLogFile(a *App, path string, outEvent string, options ExecOption
 			return false
 		}
 
-		runtime.EventsEmit(a.Ctx, outEvent, text)
+		emit(outEvent, text)
 		return options.StopOutputKeyword != "" && strings.Contains(text, options.StopOutputKeyword)
 	}
 

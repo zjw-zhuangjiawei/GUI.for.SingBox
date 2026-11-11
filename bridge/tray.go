@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/energye/systray"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func CreateTray(a *App, icon []byte) (trayStart, trayEnd func()) {
@@ -72,7 +71,7 @@ func createMenuItem(menu MenuItem, a *App, parent *systray.MenuItem) {
 			}
 		}
 
-		m.Click(func() { go runtime.EventsEmit(a.Ctx, "onMenuItemClick", menu.Event) })
+		m.Click(func() { go emit("onMenuItemClick", menu.Event) })
 
 		if menu.Checked && !checkable {
 			m.Check()
@@ -95,7 +94,7 @@ func updateTray(a *App, tray TrayContent) {
 	}
 	if tray.Title != "" {
 		systray.SetTitle(tray.Title)
-		runtime.WindowSetTitle(a.Ctx, tray.Title)
+		windowSetTitle(tray.Title)
 	}
 	if tray.Tooltip != "" {
 		systray.SetTooltip(tray.Tooltip)

@@ -18,7 +18,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"gopkg.in/yaml.v3"
 )
 
@@ -90,7 +89,7 @@ func (a *App) IsStartup() bool {
 func (a *App) ExitApp() {
 	log.Printf("ExitApp")
 	Env.PreventExit = false
-	runtime.Quit(a.Ctx)
+	quitApp()
 }
 
 func (a *App) RestartApp(admin bool) FlagResult {
@@ -146,7 +145,7 @@ func (a *App) GetInterfaces() FlagResult {
 
 func (a *App) ShowMainWindow() {
 	log.Printf("ShowMainWindow")
-	runtime.WindowShow(a.Ctx)
+	windowShow()
 }
 
 func initDataDir(dir string, portable bool) {
@@ -240,14 +239,14 @@ func defaultDataDir() (string, error) {
 func createMacOSMenus(app *App) {
 	appMenu := app.AppMenu.AddSubmenu("App")
 	appMenu.AddText("Show", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
-		runtime.WindowShow(app.Ctx)
+		windowShow()
 	})
 	appMenu.AddText("Hide", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
-		runtime.WindowHide(app.Ctx)
+		windowHide()
 	})
 	appMenu.AddSeparator()
 	appMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
-		runtime.EventsEmit(app.Ctx, "onExitApp")
+		emit("onExitApp")
 	})
 
 	// on macos platform, we should append EditMenu to enable Cmd+C,Cmd+V,Cmd+Z... shortcut
