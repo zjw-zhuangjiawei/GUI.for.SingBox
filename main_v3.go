@@ -16,6 +16,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	v2options "github.com/wailsapp/wails/v2/pkg/options"
 )
@@ -58,6 +59,7 @@ func main() {
 
 	var window *application.WebviewWindow
 	var v3app *application.App
+	notifier := notifications.New()
 
 	v3app = application.New(application.Options{
 		Name:        bridge.Env.AppName,
@@ -65,6 +67,7 @@ func main() {
 		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(app),
+			application.NewService(notifier),
 		},
 		Assets: application.AssetOptions{
 			Handler:    application.AssetFileServerFS(assets),

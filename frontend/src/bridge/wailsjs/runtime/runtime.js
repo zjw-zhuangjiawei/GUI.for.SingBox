@@ -5,6 +5,7 @@
 // `wails build` (v2) regenerates this directory and would overwrite this file;
 // on the wails-v3 branch build the frontend with `pnpm build-only` instead.
 import { Browser, Clipboard, Events, Window } from '@wailsio/runtime'
+import * as NotificationService from '../github.com/wailsapp/wails/v3/pkg/services/notifications/index.js'
 
 // v3 delivers a single event object: its payload is the bare value when Go sent
 // one argument, or the argument slice when it sent several.
@@ -86,16 +87,23 @@ export const WindowReloadApp = () => {
 // common:ThemeChanged event, so this is intentionally a no-op.
 export const WindowSetSystemDefaultTheme = () => {}
 
-// v3's JS runtime has no notification API, so use the Web Notifications API,
-// which the platform webviews surface as native notifications.
-export const IsNotificationAvailable = async () => typeof Notification !== 'undefined'
+// v3's JS runtime has no notification API; these call the notifications service
+// registered by the v3 entry point (D-Bus on Linux, UNUserNotificationCenter on
+// macOS, wintoast on Windows).
+export const IsNotificationAvailable = async () => {
+  try {
+    return await NotificationService.CheckNotificationAuthorization()
+  } catch {
+    return false
+  }
+}
 
 export const RequestNotificationAuthorization = async () => {
-  if (typeof Notification === 'undefined') return false
-  if (Notification.permission === 'granted') return true
-  return (await Notification.requestPermission()) === 'granted'
+  try {
+    return await NotificationService.RequestNotificationAuthorization()
+  } catch {
+    return false
+  }
 }
 
-export const SendNotification = async (options) => {
-  new Notification(options.title, { body: options.body })
-}
+export const SendNotification = (options) => NotificationService.SendNotification(options)

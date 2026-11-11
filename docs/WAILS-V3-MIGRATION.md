@@ -70,6 +70,22 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
   `GetEnv`、`ReadFile data/*.yaml`、`GetSystemProxyBypass`、`UpdateTrayAndMenus`，
   说明 Vue 界面在 v3 下完整跑起来，绑定与事件都通。
 
+### 第 4 步：通知走 v3 service，托盘/主题核对
+
+- 通知：v3 有 `pkg/services/notifications`（Linux 走 D-Bus，macOS 走 UNUserNotificationCenter，
+  Windows 走 wintoast）。`main_v3.go` 里 `application.NewService(notifications.New())` 注册成
+  第二个 service，`wails generate bindings` 后前端 shim 的
+  `IsNotificationAvailable` / `RequestNotificationAuthorization` / `SendNotification`
+  改为调用生成的 `NotificationService`，不再用 Web Notification API。
+  实测：启动 6 秒后发一条通知，`SendNotification` 返回 `nil`。
+- 托盘：`energye/systray` 在 v3 的 GTK 主循环下**照常工作**，无需改成 `app.SystemTray`。
+  实测 v3 进程注册了 `org.kde.StatusNotifierItem-<pid>-1`，且出现在
+  `org.kde.StatusNotifierWatcher.RegisteredStatusNotifierItems` 里。菜单回调本来就走
+  `bridge.App` 的方法，与工具包无关。
+- 主题：前端的主题切换是 `document.body.setAttribute('theme-mode', ...)` 的纯 CSS 方案，
+  v2 的 `WindowSetSystemDefaultTheme()` 只是通知原生控件跟随系统；v3 没有对应 API，
+  shim 里的空函数就是正解，不需要 `common:ThemeChanged`。
+
 ## v2 → v3 对照
 
 | v2 | v3 |
@@ -90,15 +106,14 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
 | `-tags webkit2_41` | `-tags gtk3` / `gtk4` |
 | `wails.json` | `Taskfile.yml` + `build/config.yml`（未做） |
 
-## 还没做（第 4-6 步）
+## 还没做（第 5-6 步）
 
-1. **主题**：`WindowSetSystemDefaultTheme` 目前是空函数，换成 `common:ThemeChanged` 事件 + CSS。
-2. 原生托盘/菜单：`app.SystemTray`、`application.Menu` 替换 `energye/systray` 和 macOS 菜单。
-3. 通知：`pkg/services/notifications`（现在走 Web Notification API，够用但不在 Go 侧可控）。
-4. 构建与 CI：`Taskfile.yml`、`build/config.yml`，`.github/workflows/release.yml` 三处 `wails build`。
-5. `bridge/bridge.go` 里 `createMacOSMenus` 仍用 v2 的 `menu`/`keys` 包——只在 darwin 生效，
+1. 构建与 CI：`Taskfile.yml`、`build/config.yml`，`.github/workflows/release.yml` 三处 `wails build`。
+2. `bridge/bridge.go` 里 `createMacOSMenus` 仍用 v2 的 `menu`/`keys` 包——只在 darwin 生效，
    v3 构建里是死代码，第 5 步一起换掉。
-6. 前端 Windows/macOS 相关行为（透明窗口、Mica/Acrylic）需要上机验证。
+3. 最终清理：删掉 `wails/v2` 依赖、`main.go`、`bridge/host.go` 里 v2 那套映射。
+4. 前端 Windows/macOS 相关行为（透明窗口、Mica/Acrylic、`macOS` 隐藏标题栏）需要上机验证。
+5. 托盘菜单的点击行为、通知的点击回调只在 Linux 验证过。
 
 ## 已知坑
 
