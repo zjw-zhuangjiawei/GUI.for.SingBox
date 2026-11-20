@@ -158,3 +158,11 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
   `pnpm build-only` + `go build -tags gtk3`。
 - 本分支的前端只服务 v3（`window._wails` 检测）；v2 编译出来的包 UI 会显示「WebView2 未安装」兜底页。
 - 会话锁屏时截图拿不到窗口内容（KWin 不渲染 webview 表面），只能看到白底；验证 UI 要看日志或解锁后看屏幕。
+- **Linux 上禁用 View Transition**（`frontend/src/stores/appSettings.ts` 的 `canViewTransition`）：
+  WebKitGTK 拿不到加速合成时（本机日志 `Disabled hardware acceleration because GTK failed to
+  initialize GL`、或设置了 `WEBKIT_DISABLE_DMABUF_RENDERER=1`），`document.startViewTransition()`
+  会让 web 进程进入加速合成，UI 进程随后在空的 `AcceleratedBackingStore::update()` 上崩溃
+  （WebKit bug 324730，本机 webkit2gtk 2.54.2 复现，纯 HTML 页面也能触发）。表现是整个窗口
+  永久留白、`WebKitWebProcess` 留下 SIGABRT core，页面脚本全部停摆。挑主题时走 update-only 回退。
+- `frontend/index.html` 的 IPC 检测必须等 `load` 事件：v3 在 Linux 上是 `WindowLoadFinished`
+  之后才注入 `window._wails`，解析期同步判断会误报「WebView2 未安装」。

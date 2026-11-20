@@ -246,8 +246,13 @@ export const useAppSettingsStore = defineStore('app-settings', () => {
       themeMode.value = matches ? Theme.Dark : Theme.Light
     }
   })
+  /* WebKitGTK 在拿不到加速合成时，首次 startViewTransition 会让 web 进程崩溃
+     （WebKit bug 324730），Linux 上直接走 update-only 回退。 */
+  const canViewTransition =
+    !!document.startViewTransition && !navigator.userAgent.includes('Linux')
+
   const setAppTheme = (theme: Extract<App.Theme, 'light' | 'dark'>) => {
-    if (document.startViewTransition) {
+    if (canViewTransition) {
       const transition = document.startViewTransition(() => {
         document.body.setAttribute('theme-mode', theme)
       })

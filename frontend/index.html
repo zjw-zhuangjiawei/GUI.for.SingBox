@@ -29,11 +29,15 @@
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
     <script>
-      // v2 injected window.WailsInvoke; v3 injects window._wails.
-      if (!window._wails) {
-        document.getElementById('ipc-error').style.display = 'block'
-        document.getElementById('app').style.display = 'none'
+      // v3 Linux 在 window load 之后才注入 window._wails，不能在解析期判定。
+      function checkIpc() {
+        if (!window._wails) {
+          document.getElementById('ipc-error').style.display = 'block'
+          document.getElementById('app').style.display = 'none'
+        }
       }
+      if (document.readyState === 'complete') checkIpc()
+      else window.addEventListener('load', checkIpc)
     </script>
   </body>
 </html>
