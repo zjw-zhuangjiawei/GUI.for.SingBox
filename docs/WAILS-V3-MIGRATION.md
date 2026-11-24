@@ -166,3 +166,20 @@ v2 的 `-tags webkit2_41` 在 v3 下无效。
   永久留白、`WebKitWebProcess` 留下 SIGABRT core，页面脚本全部停摆。挑主题时走 update-only 回退。
 - `frontend/index.html` 的 IPC 检测必须等 `load` 事件：v3 在 Linux 上是 `WindowLoadFinished`
   之后才注入 `window._wails`，解析期同步判断会误报「WebView2 未安装」。
+
+## Linux 性能：gtk3 与 gtk4 实测（同一台机器）
+
+压力页（80 行文本滚动 + 全屏 blur/opacity 动画，`requestAnimationFrame` 采样）实测：
+
+| 构建 | 后端 | WebKit 硬件加速 | 帧率 |
+| --- | --- | --- | --- |
+| `-tags gtk3` | Wayland | 关闭（`Disabled hardware acceleration because GTK failed to initialize GL: 指定的像素格式没有可用的设置`） | 16–19 fps |
+| `-tags gtk3` | `GDK_BACKEND=x11` | 开启 | 60 fps |
+| `-tags gtk4` | Wayland | 关闭（同因，报 `没有可用的 EGL 配置`） | 16–21 fps |
+| `-tags gtk4` | `GDK_BACKEND=x11` | 开启 | 60–61 fps |
+
+结论：卡顿与 gtk3/gtk4 无关，是 GTK 在 Wayland 下拿不到 EGL 配置（hybrid NVIDIA + Mesa 环境常见），
+WebKit 退回软件渲染。`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`EGL_PLATFORM=wayland`、
+`__EGL_VENDOR_LIBRARY_FILENAMES=…/50_mesa.json`、`GDK_GL=gles` 都试过，均仍在软件渲染。
+需要硬件加速时给进程加 `GDK_BACKEND=x11`（走 XWayland）；系统安装的 v2 版本是同一套 GTK3 + Wayland，
+同样在软件渲染。
