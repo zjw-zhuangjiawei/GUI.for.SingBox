@@ -183,3 +183,11 @@ WebKit 退回软件渲染。`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`EGL_PLATFORM=w
 `__EGL_VENDOR_LIBRARY_FILENAMES=…/50_mesa.json`、`GDK_GL=gles` 都试过，均仍在软件渲染。
 需要硬件加速时给进程加 `GDK_BACKEND=x11`（走 XWayland）；系统安装的 v2 版本是同一套 GTK3 + Wayland，
 同样在软件渲染。
+
+进一步定位（与本项目无关）：用 pygobject 起一个什么都不做的 GTK 窗口，`Gdk.Window.create_gl_context()`
+在 Wayland 下报 `gdk-gl-error-quark: 指定的像素格式没有可用的设置`，`GDK_BACKEND=x11` 下 `create_gl_context: OK`；
+GTK4 窗口在 Wayland 下报 `Failed to realize renderer 'GskGLRenderer' for surface 'GdkWaylandToplevel': 没有可用的 EGL 配置`。
+即：这台机器上**纯 GTK 程序**在 Wayland 下都拿不到 EGL 配置。EGL 本身没问题（Mesa/Intel 的 Wayland 平台
+有 220 个 config，其中 20 个是支持 window surface 的 ARGB8888；KWin 自己用 EGL + Mesa Intel 渲染正常），
+所以问题在 GDK Wayland 的 config 选择与 mesa 26.3.1 的组合上。网上同类报错多见于 Mesa 版本回归，
+有人通过降级 mesa 解决。下一步可选：继续用 XWayland、试降级 mesa 验证、或上报 GTK/Mesa。
